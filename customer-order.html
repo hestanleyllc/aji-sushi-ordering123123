@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maple &amp; Main · Order Online</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --steel:#2B2B2E;
+    --steel-line:#3E3E42;
+    --chrome:#B9C1C7;
+    --cream:#FAF3E4;
+    --cream-dark:#EFE4CB;
+    --ink:#1C1B19;
+    --diner-red:#C8102E;
+    --mustard:#F2A93B;
+    --grill-green:#3F7A55;
+    --muted:#8E8B84;
+  }
+  html{background:var(--steel);}
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--steel);
+    background-image:repeating-linear-gradient(115deg, rgba(255,255,255,0.015) 0 2px, transparent 2px 40px);
+    color:var(--cream);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .display{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
+  .mono{font-family:'Space Mono',monospace;}
+
+  .checker{
+    height:6px;width:100%;
+    background-image:
+      linear-gradient(45deg, var(--ink) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--ink) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--ink) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--ink) 75%);
+    background-size:12px 12px;
+    background-color:var(--cream);
+    background-position:0 0, 0 6px, 6px -6px, -6px 0;
+  }
+
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 20px;border-bottom:1px solid var(--steel-line);
+    position:sticky;top:0;background:var(--steel);z-index:20;
+  }
+  .brand{display:flex;flex-direction:column;line-height:1;}
+  .brand small{color:var(--mustard);font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:600;}
+  .brand strong{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.5px;}
+  .pay-note{
+    font-size:11px;color:var(--muted);border:1px solid var(--steel-line);
+    padding:6px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:0.5px;
+  }
+
+  .customer{max-width:720px;margin:0 auto;padding:20px 16px 120px;background:var(--steel);}
+  .cat-rail{display:flex;gap:8px;overflow-x:auto;padding:4px 0 18px;}
+  .cat-pill{
+    flex:none;padding:7px 16px;border-radius:20px;font-size:12px;font-weight:700;
+    background:var(--steel-line);color:var(--muted);cursor:pointer;white-space:nowrap;
+    text-transform:uppercase;letter-spacing:0.5px;
+  }
+  .cat-pill.active{background:var(--mustard);color:var(--ink);}
+  .cat-title{
+    font-family:'Bebas Neue',sans-serif;color:var(--mustard);font-size:22px;letter-spacing:1px;
+    margin:24px 0 10px;display:flex;align-items:center;gap:10px;
+  }
+  .cat-title::after{content:'';flex:1;height:1px;background:var(--steel-line);}
+  .dish{
+    display:flex;gap:12px;align-items:center;background:#343330;
+    border:1px solid var(--steel-line);border-radius:10px;padding:12px;margin-bottom:10px;
+  }
+  .dish-info{flex:1;min-width:0;}
+  .dish-info h3{font-size:15px;color:var(--cream);margin:0;font-weight:700;}
+  .dish-info p{margin:3px 0 0;font-size:12px;color:var(--muted);}
+  .dish-price{font-family:'Space Mono',monospace;color:var(--mustard);font-size:14px;margin-top:6px;}
+  .qty-ctrl{display:flex;align-items:center;gap:8px;flex:none;}
+  .qty-btn{
+    width:28px;height:28px;border-radius:6px;border:1px solid var(--steel-line);
+    background:var(--steel);color:var(--cream);font-size:16px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .qty-btn.add{background:var(--grill-green);border-color:var(--grill-green);color:#fff;}
+  .qty-num{width:18px;text-align:center;font-family:'Space Mono',monospace;font-size:14px;}
+
+  .cart-fab{
+    position:fixed;left:16px;right:16px;bottom:16px;max-width:688px;margin:0 auto;
+    background:var(--diner-red);color:#fff;border-radius:10px;padding:14px 18px;
+    display:flex;justify-content:space-between;align-items:center;font-weight:700;
+    box-shadow:0 8px 24px rgba(0,0,0,0.45);cursor:pointer;z-index:30;
+    text-transform:uppercase;letter-spacing:0.5px;font-size:13px;
+  }
+  .cart-fab .count{
+    background:#fff;color:var(--diner-red);width:22px;height:22px;border-radius:50%;
+    font-size:12px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;
+  }
+
+  .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:40;display:none;}
+  .drawer-backdrop.open{display:block;}
+  .drawer{
+    position:fixed;left:0;right:0;bottom:0;max-height:85vh;overflow-y:auto;
+    background:var(--cream);color:var(--ink);border-radius:16px 16px 0 0;
+    padding:0 18px 24px;z-index:41;transform:translateY(100%);transition:transform .25s ease;
+  }
+  .drawer.open{transform:translateY(0);}
+  .drawer .checker{border-radius:16px 16px 0 0;}
+  .drawer h2{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:16px 0 14px;}
+  .cart-line{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px dashed #cbbd94;}
+  .cart-line .name{font-weight:600;font-size:14px;}
+  .cart-line .sub{font-size:12px;color:#8a7a52;}
+  .field{margin-top:16px;}
+  .field label{font-size:11px;color:#7a6c46;text-transform:uppercase;letter-spacing:1px;font-weight:700;}
+  .field input, .field select, .field textarea{
+    width:100%;margin-top:6px;padding:10px;border-radius:8px;border:1px solid #cbbd94;
+    background:#fff;font-family:'Inter',sans-serif;font-size:14px;
+  }
+  .pay-banner{
+    margin-top:16px;padding:10px 12px;background:#EFE4CB;border:1px dashed #b8a870;border-radius:8px;
+    font-size:12px;color:#6b5d38;text-align:center;
+  }
+  .total-row{display:flex;justify-content:space-between;margin-top:16px;font-weight:700;font-size:17px;}
+  .submit-btn{
+    width:100%;margin-top:16px;padding:14px;border:none;border-radius:8px;
+    background:var(--diner-red);color:#fff;font-weight:700;font-size:14px;cursor:pointer;
+    text-transform:uppercase;letter-spacing:1px;
+  }
+  .submit-btn:disabled{opacity:0.5;}
+  .empty-cart{color:#8a7a52;font-size:13px;text-align:center;padding:24px 0;}
+
+  .confirm{text-align:center;padding:16px 0 4px;}
+  .confirm .stub{
+    display:inline-block;background:#fff;border:2px dashed #b8a870;border-radius:8px;
+    padding:14px 30px;margin:12px 0;position:relative;
+  }
+  .confirm .stub::before{
+    content:'';position:absolute;bottom:-6px;left:0;right:0;height:8px;
+    background-image:radial-gradient(circle, var(--cream) 3px, transparent 3.5px);
+    background-position:bottom;background-repeat:repeat-x;background-size:12px 12px;
+  }
+  .confirm .stub .num{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;letter-spacing:2px;}
+  .track-status{
+    margin-top:8px;font-size:13px;color:#6b5d38;font-weight:600;
+  }
+  .track-time{
+    margin-top:10px;display:inline-block;background:var(--diner-red);color:#fff;
+    padding:10px 20px;border-radius:8px;font-family:'Space Mono',monospace;font-size:18px;font-weight:700;
+  }
+</style>
+</head>
+<body>
+
+<div class="checker"></div>
+<div class="topbar">
+  <div class="brand"><small>Est. on Main Street</small><strong>MAPLE &amp; MAIN</strong></div>
+  <div class="pay-note">Pay in store</div>
+</div>
+
+<div class="customer" id="customerView"></div>
+<div class="cart-fab" id="cartFab" style="display:none;">
+  <span><span class="count" id="cartCount">0</span>View order</span>
+  <span id="cartTotal" class="mono">$0</span>
+</div>
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<div class="drawer" id="drawer"></div>
+
+<script>
+const DEFAULT_SITE = {
+  name: 'MAPLE & MAIN',
+  tagline: 'Est. on Main Street',
+  payNote: 'No online payment — please pay at the counter or with your server.'
+};
+const DEFAULT_MENU = [
+  {cat:'Griddle & Eggs', items:[
+    {id:'d1', name:'Buttermilk Pancake Stack', desc:'Three tall stack, warm maple syrup', price:11, emoji:'🥞', soldOut:false},
+    {id:'d2', name:'The Main Street Skillet', desc:'Eggs, hash browns, cheddar, peppers', price:13, emoji:'🍳', soldOut:false},
+  ]},
+  {cat:'From the Grill', items:[
+    {id:'d3', name:'Bacon Cheeseburger', desc:'Half-pound patty, smoked bacon, fries', price:15, emoji:'🍔', soldOut:false},
+    {id:'d4', name:'BBQ Pulled Pork Sandwich', desc:'Slow-smoked, house slaw, brioche bun', price:14, emoji:'🥪', soldOut:false},
+    {id:'d5', name:'Baked Mac & Cheese', desc:'Three-cheese blend, toasted crumb topping', price:12, emoji:'🧀', soldOut:false},
+  ]},
+  {cat:'Fountain & Sides', items:[
+    {id:'d6', name:'Hand-Spun Milkshake', desc:'Vanilla, chocolate, or strawberry', price:7, emoji:'🥤', soldOut:false},
+    {id:'d7', name:'Sweet Tea', desc:'Southern-style, brewed daily', price:3, emoji:'🧊', soldOut:false},
+    {id:'d8', name:'Slice of Apple Pie', desc:'Warm, with a scoop of vanilla', price:6, emoji:'🥧', soldOut:false},
+  ]},
+];
+
+let MENU = DEFAULT_MENU;
+let SITE = DEFAULT_SITE;
+let cart = {};
+let activeCat = MENU[0].cat;
+let lastOrderNum = null;
+let trackingOrderId = null;
+let trackingTimer = null;
+
+function applySiteInfo(){
+  document.querySelector('.brand strong').textContent = SITE.name;
+  document.querySelector('.brand small').textContent = SITE.tagline;
+}
+
+async function loadConfig(silent){
+  try{
+    const res = await fetch('/api/config');
+    if(res.ok){
+      const cfg = await res.json();
+      if(cfg.menu && cfg.menu.length) MENU = cfg.menu;
+      if(cfg.siteInfo) SITE = cfg.siteInfo;
+    }
+  }catch(e){}
+  if(!MENU.find(s=>s.cat===activeCat)) activeCat = MENU[0].cat;
+  applySiteInfo();
+  if(!silent) renderCustomer();
+  else if(document.getElementById('customerView').innerHTML) renderCustomer();
+}
+
+function startTracking(orderId){
+  trackingOrderId = orderId;
+  if(trackingTimer) clearInterval(trackingTimer);
+  trackingTimer = setInterval(checkOrderStatus, 3000);
+  checkOrderStatus();
+}
+function stopTracking(){
+  trackingOrderId = null;
+  if(trackingTimer){ clearInterval(trackingTimer); trackingTimer = null; }
+}
+async function checkOrderStatus(){
+  if(!trackingOrderId) return;
+  try{
+    const res = await fetch('/api/orders/'+trackingOrderId);
+    if(!res.ok) return;
+    const order = await res.json();
+    updateTrackingUI(order);
+  }catch(e){}
+}
+function updateTrackingUI(order){
+  const statusEl = document.getElementById('trackStatus');
+  const timeEl = document.getElementById('trackTime');
+  if(!statusEl || !timeEl) return;
+  if(!order.pickupTime){
+    statusEl.textContent = 'Waiting for the restaurant to confirm your pickup time…';
+    timeEl.style.display = 'none';
+    return;
+  }
+  const labelMap = {confirmed:'Order confirmed', cooking:'Being prepared', done:'Ready for pickup!'};
+  statusEl.textContent = labelMap[order.status] || 'Order confirmed';
+  timeEl.style.display = 'block';
+  timeEl.textContent = 'Pickup time: ' + order.pickupTime;
+}
+
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderCustomer(){
+  const el = document.getElementById('customerView');
+  let html = '<div class="cat-rail">';
+  MENU.forEach(sec=>{
+    html += `<div class="cat-pill ${sec.cat===activeCat?'active':''}" data-cat="${escapeHtml(sec.cat)}">${escapeHtml(sec.cat)}</div>`;
+  });
+  html += '</div>';
+  MENU.forEach(sec=>{
+    html += `<div class="cat-title">${escapeHtml(sec.cat)}</div>`;
+    sec.items.forEach(it=>{
+      const qty = cart[it.id]||0;
+      html += `
+        <div class="dish">
+          <div class="dish-info">
+            <h3>${escapeHtml(it.name)}</h3>
+            <p>${escapeHtml(it.desc)}</p>
+            <div class="dish-price">$${it.price}${it.soldOut?' · <span style="color:var(--diner-red);">Sold Out</span>':''}</div>
+          </div>
+          ${it.soldOut ? '' : `
+          <div class="qty-ctrl">
+            ${qty>0?`<div class="qty-btn" data-act="dec" data-id="${it.id}">−</div><div class="qty-num">${qty}</div>`:''}
+            <div class="qty-btn add" data-act="inc" data-id="${it.id}">+</div>
+          </div>`}
+        </div>`;
+    });
+  });
+  el.innerHTML = html;
+  updateCartFab();
+}
+
+function cartCountTotal(){
+  let count=0, total=0;
+  Object.entries(cart).forEach(([id,qty])=>{
+    const item = MENU.flatMap(s=>s.items).find(i=>i.id===id);
+    if(item){count+=qty; total+=qty*item.price;}
+  });
+  return {count,total};
+}
+
+function updateCartFab(){
+  const {count,total} = cartCountTotal();
+  document.getElementById('cartFab').style.display = count>0 ? 'flex':'none';
+  document.getElementById('cartCount').textContent = count;
+  document.getElementById('cartTotal').textContent = '$'+total;
+}
+
+function renderDrawer(showConfirm){
+  const drawer = document.getElementById('drawer');
+  if(showConfirm){
+    drawer.innerHTML = `
+      <div class="checker"></div>
+      <div class="confirm">
+        <div style="font-size:13px;color:#7a6c46;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Order sent to the restaurant</div>
+        <div class="stub">
+          <div style="font-size:11px;color:#7a6c46;text-transform:uppercase;letter-spacing:1px;">Order No.</div>
+          <div class="num mono">${lastOrderNum}</div>
+        </div>
+        <div id="trackStatus" class="track-status">Waiting for the restaurant to confirm your pickup time…</div>
+        <div id="trackTime" class="track-time" style="display:none;"></div>
+        <div style="font-size:12px;color:#7a6c46;margin-top:10px;">Please pay in store when you arrive or when your order is ready.</div>
+        <button class="submit-btn" style="margin-top:18px;background:var(--grill-green);" id="closeConfirm">Done</button>
+      </div>`;
+    document.getElementById('closeConfirm').onclick = ()=>{
+      stopTracking();
+      cart = {};
+      renderCustomer();
+      closeDrawer();
+    };
+    return;
+  }
+  const {count,total} = cartCountTotal();
+  let html = '<div class="checker"></div><h2>Your Order</h2>';
+  if(count===0){
+    html += '<div class="empty-cart">Your cart is empty — pick something off the menu</div>';
+  } else {
+    Object.entries(cart).forEach(([id,qty])=>{
+      const item = MENU.flatMap(s=>s.items).find(i=>i.id===id);
+      if(!item||qty<=0) return;
+      html += `<div class="cart-line">
+        <div><div class="name">${escapeHtml(item.name)}</div><div class="sub">$${item.price} × ${qty}</div></div>
+        <div class="mono">$${item.price*qty}</div>
+      </div>`;
+    });
+    html += `
+      <div class="field">
+        <label>Order type</label>
+        <select id="orderMode">
+          <option value="dine-in">Dine in · Table</option>
+          <option value="pickup">Pickup</option>
+        </select>
+      </div>
+      <div class="field" id="tableField">
+        <label>Table number</label>
+        <input id="tableNum" placeholder="e.g. 12" />
+      </div>
+      <div class="field">
+        <label>Your name</label>
+        <input id="customerName" placeholder="For pickup / table call-out" />
+      </div>
+      <div class="field">
+        <label>Notes (optional)</label>
+        <textarea id="orderNote" rows="2" placeholder="Allergies, no onions, extra sauce…"></textarea>
+      </div>
+      <div class="total-row"><span>Total (pay in store)</span><span class="mono">$${total}</span></div>
+      <div class="pay-banner">💵 ${SITE.payNote}</div>
+      <button class="submit-btn" id="submitOrder">Place Order</button>`;
+  }
+  drawer.innerHTML = html;
+
+  const modeSel = document.getElementById('orderMode');
+  if(modeSel){
+    modeSel.onchange = ()=>{
+      document.getElementById('tableField').style.display = modeSel.value==='dine-in'?'block':'none';
+    };
+  }
+  const submitBtn = document.getElementById('submitOrder');
+  if(submitBtn){
+    submitBtn.onclick = submitOrder;
+  }
+}
+
+function openDrawer(){
+  document.getElementById('drawerBackdrop').classList.add('open');
+  document.getElementById('drawer').classList.add('open');
+  renderDrawer(false);
+}
+function closeDrawer(){
+  stopTracking();
+  document.getElementById('drawerBackdrop').classList.remove('open');
+  document.getElementById('drawer').classList.remove('open');
+}
+
+async function submitOrder(){
+  const btn = document.getElementById('submitOrder');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const {total} = cartCountTotal();
+  const items = Object.entries(cart).filter(([,q])=>q>0).map(([id,qty])=>{
+    const item = MENU.flatMap(s=>s.items).find(i=>i.id===id);
+    return {name:item.name, qty, price:item.price};
+  });
+  const mode = document.getElementById('orderMode').value;
+  const table = document.getElementById('tableNum') ? document.getElementById('tableNum').value : '';
+  const name = document.getElementById('customerName').value;
+  const note = document.getElementById('orderNote').value;
+  const payload = {
+    items, total, note, name,
+    location: mode==='dine-in' ? ('Table '+(table||'—')) : 'Pickup',
+  };
+  try{
+    const res = await fetch('/api/orders', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok) throw new Error('order failed');
+    const order = await res.json();
+    lastOrderNum = order.num;
+    renderDrawer(true);
+    startTracking(order.id);
+  }catch(e){
+    btn.disabled = false; btn.textContent = 'Place Order';
+    alert('Something went wrong — please try again.');
+    console.error(e);
+  }
+}
+
+document.getElementById('customerView').addEventListener('click', (e)=>{
+  const t = e.target.closest('.cat-pill, .qty-btn');
+  if(!t) return;
+  if(t.classList.contains('cat-pill')){
+    activeCat = t.dataset.cat;
+    renderCustomer();
+    return;
+  }
+  const id = t.dataset.id, act = t.dataset.act;
+  cart[id] = (cart[id]||0) + (act==='inc'?1:-1);
+  if(cart[id]<=0) delete cart[id];
+  renderCustomer();
+});
+
+document.getElementById('cartFab').onclick = openDrawer;
+document.getElementById('drawerBackdrop').onclick = closeDrawer;
+
+loadConfig(false);
+setInterval(()=>loadConfig(true), 20000);
+</script>
+</body>
+</html>
