@@ -30,6 +30,66 @@ function sendNewOrderEmail(order){
   }).catch(err => console.error('Failed to send order notification email', err));
 }
 
+// ---- Printer (PrintNode) ----
+const PRINTNODE_API_KEY = process.env.PRINTNODE_API_KEY;
+const PRINTNODE_PRINTER_ID = process.env.PRINTNODE_PRINTER_ID;
+if(!PRINTNODE_API_KEY || !PRINTNODE_PRINTER_ID){
+  console.log('Kitchen printing disabled — set PRINTNODE_API_KEY and PRINTNODE_PRINTER_ID to enable it.');
+}
+
+function buildReceiptText(order){
+  const name = (data.config.siteInfo && data.config.siteInfo.name) || 'ORDER';
+  const line = '--------------------------------';
+  const lines = [name, line, `Order #${order.num}`, `Type: ${order.location}`];
+  if(order.name) lines.push(`Name: ${order.name}`);
+  if(order.phone) lines.push(`Phone: ${order.phone}`);
+  lines.push(line);
+  order.items.forEach(it=>{
+    lines.push(`x${it.qty}  ${it.name}  $${(it.price*it.qty).toFixed(2)}`);
+    if(it.options){
+      Object.entries(it.options).forEach(([k,v])=>{ if(v) lines.push(`   ${k}: ${v}`); });
+    }
+    if(it.note) lines.push(`   Note: ${it.note}`);
+  });
+  lines.push(line);
+  lines.push(`Total: $${Number(order.total).toFixed(2)}`);
+  if(order.note) lines.push(`Order note: ${order.note}`);
+  lines.push('');
+  lines.push(new Date(order.createdAt).toLocaleString('en-US'));
+  return lines.join('\n');
+}
+
+function buildEscPosBuffer(text){
+  const INIT = Buffer.from([0x1B, 0x40]); // ESC @  (reset printer)
+  const body = Buffer.from(text + '\n\n\n', 'utf8');
+  const CUT = Buffer.from([0x1D, 0x56, 0x00]); // GS V 0 (full cut)
+  return Buffer.concat([INIT, body, CUT]);
+}
+
+async function printOrderTicket(order){
+  if(!PRINTNODE_API_KEY || !PRINTNODE_PRINTER_ID) return;
+  try{
+    const content = buildEscPosBuffer(buildReceiptText(order)).toString('base64');
+    const auth = Buffer.from(PRINTNODE_API_KEY + ':').toString('base64');
+    const res = await fetch('https://api.printnode.com/printjobs', {
+      method: 'POST',
+      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        printerId: Number(PRINTNODE_PRINTER_ID),
+        title: `Order #${order.num}`,
+        contentType: 'raw_base64',
+        content,
+        source: 'Maple & Main website',
+      }),
+    });
+    if(!res.ok){
+      console.error('PrintNode print failed:', res.status, await res.text());
+    }
+  }catch(e){
+    console.error('Failed to send print job to PrintNode', e);
+  }
+}
+
 const app = express();
 app.use(express.json());
 
@@ -89,8 +149,20 @@ const DEFAULT_CONFIG = {
     name: 'MAPLE & MAIN',
     tagline: 'Est. on Main Street',
     payNote: 'No online payment — please pay at the counter or with your server.',
-    contact: { phone: '', address: '', hours: '' },
-    notifyEmail: ''
+    contact: { phone: '', address: '1620 NY-22, Brewster, NY 10509', hours: '' },
+    notifyEmail: '',
+    orderingHours: {
+      timezone: 'America/New_York',
+      schedule: {
+        mon: { closed: true },
+        tue: { open: '11:00', close: '20:45' },
+        wed: { open: '11:00', close: '20:45' },
+        thu: { open: '11:00', close: '20:45' },
+        fri: { open: '11:00', close: '20:45' },
+        sat: { open: '11:00', close: '20:45' },
+        sun: { open: '11:00', close: '20:45' },
+      }
+    }
   },
   seo: {
     title: 'Maple & Main · Order Online',
@@ -194,7 +266,48 @@ app.get('/api/orders/:id', (req, res) => {
   res.json(order);
 });
 
+// ---- Ordering hours ----
+function getStoreStatus(){
+  const orderingHours = data.config.siteInfo && data.config.siteInfo.orderingHours;
+  if(!orderingHours || !orderingHours.schedule){
+    return { open: true, schedule: null, timezone: null };
+  }
+  const tz = orderingHours.timezone || 'America/New_York';
+  const now = new Date();
+  let parts;
+  try{
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(now);
+  }catch(e){
+    return { open: true, schedule: orderingHours.schedule, timezone: tz };
+  }
+  const dayKey = parts.find(p=>p.type==='weekday').value.toLowerCase().slice(0,3);
+  const hourStr = parts.find(p=>p.type==='hour').value;
+  const minuteStr = parts.find(p=>p.type==='minute').value;
+  const nowMinutes = (Number(hourStr) % 24) * 60 + Number(minuteStr);
+
+  const day = orderingHours.schedule[dayKey];
+  if(!day || day.closed){
+    return { open: false, reason: 'closed_today', schedule: orderingHours.schedule, timezone: tz };
+  }
+  const [openH, openM] = (day.open || '00:00').split(':').map(Number);
+  const [closeH, closeM] = (day.close || '23:59').split(':').map(Number);
+  const openMinutes = openH * 60 + openM;
+  const closeMinutes = closeH * 60 + closeM;
+  const isOpen = nowMinutes >= openMinutes && nowMinutes <= closeMinutes;
+  return { open: isOpen, reason: isOpen ? null : 'outside_hours', schedule: orderingHours.schedule, timezone: tz };
+}
+
+app.get('/api/store-status', (req, res) => {
+  res.json(getStoreStatus());
+});
+
 app.post('/api/orders', (req, res) => {
+  const status = getStoreStatus();
+  if(!status.open){
+    return res.status(403).json({ error: 'closed', message: 'Sorry, online ordering is currently closed. Please check our hours.' });
+  }
   const body = req.body || {};
   if(!Array.isArray(body.items) || body.items.length === 0){
     return res.status(400).json({ error: 'Order must include at least one item' });
@@ -216,6 +329,7 @@ app.post('/api/orders', (req, res) => {
   saveData();
   broadcast('new-order', { order });
   sendNewOrderEmail(order);
+  printOrderTicket(order);
   res.json(order);
 });
 
