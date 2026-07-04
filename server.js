@@ -139,10 +139,14 @@ app.get('/customer-order.html', (req, res) => {
     res.send(injectSeo(html, data.config.seo));
   });
 });
-app.get('/restaurant-orders.html', (req, res) => res.sendFile(path.join(__dirname, 'restaurant-orders.html')));
+app.get('/restaurant-orders.html', requireAdminAuth, (req, res) => res.sendFile(path.join(__dirname, 'restaurant-orders.html')));
 app.get('/admin.html', requireAdminAuth, (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 
-const DATA_FILE = path.join(__dirname, 'data.json');
+// If DATA_DIR is set (e.g. pointing to a Render persistent disk mount path),
+// data.json is written there so it survives restarts and redeploys.
+// If not set, it falls back to the app folder (fine for local use, but ephemeral on Render).
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DATA_FILE = path.join(DATA_DIR, 'data.json');
 
 const DEFAULT_CONFIG = {
   siteInfo: {
@@ -188,15 +192,16 @@ const DEFAULT_CONFIG = {
 
 function loadData(){
   if(!fs.existsSync(DATA_FILE)){
-    return { config: DEFAULT_CONFIG, orders: [] };
+    return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 } };
   }
   try{
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     if(!parsed.config) parsed.config = DEFAULT_CONFIG;
     if(!parsed.orders) parsed.orders = [];
+    if(!parsed.dailyOrderCounter) parsed.dailyOrderCounter = { date: '', count: 0 };
     return parsed;
   }catch(e){
-    return { config: DEFAULT_CONFIG, orders: [] };
+    return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 } };
   }
 }
 
@@ -214,7 +219,10 @@ function saveData(){
 
 // ---- Config (site info + menu) ----
 app.get('/api/config', (req, res) => {
-  res.json(data.config);
+  // Public endpoint (the ordering page needs it) — strip anything staff-only before sending.
+  const publicConfig = JSON.parse(JSON.stringify(data.config));
+  if(publicConfig.siteInfo) delete publicConfig.siteInfo.notifyEmail;
+  res.json(publicConfig);
 });
 
 app.post('/api/config', requireAdminAuth, (req, res) => {
@@ -227,14 +235,16 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
 });
 
 // ---- Orders ----
-app.get('/api/orders', (req, res) => {
+// Listing all orders exposes customer names/phone numbers — staff only.
+app.get('/api/orders', requireAdminAuth, (req, res) => {
   res.json(data.orders);
 });
 
 // ---- Real-time push (Server-Sent Events) so the kitchen alarm rings instantly ----
+// Also staff-only, since it streams new order details as they arrive.
 let sseClients = [];
 
-app.get('/api/events', (req, res) => {
+app.get('/api/events', requireAdminAuth, (req, res) => {
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -260,6 +270,8 @@ function broadcast(event, payload){
   });
 }
 
+// Single-order lookup stays public — customers use their own order's
+// unguessable id to check pickup status without logging in.
 app.get('/api/orders/:id', (req, res) => {
   const order = data.orders.find(o => o.id === req.params.id);
   if(!order) return res.status(404).json({ error: 'Order not found' });
@@ -267,6 +279,25 @@ app.get('/api/orders/:id', (req, res) => {
 });
 
 // ---- Ordering hours ----
+function getTodayKey(timezone){
+  const tz = timezone || 'America/New_York';
+  try{
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+  }catch(e){
+    return new Date().toISOString().slice(0,10);
+  }
+}
+
+function nextOrderNumber(){
+  const tz = (data.config.siteInfo && data.config.siteInfo.orderingHours && data.config.siteInfo.orderingHours.timezone) || 'America/New_York';
+  const todayKey = getTodayKey(tz);
+  if(data.dailyOrderCounter.date !== todayKey){
+    data.dailyOrderCounter = { date: todayKey, count: 0 };
+  }
+  data.dailyOrderCounter.count += 1;
+  return String(data.dailyOrderCounter.count);
+}
+
 function getStoreStatus(){
   const orderingHours = data.config.siteInfo && data.config.siteInfo.orderingHours;
   if(!orderingHours || !orderingHours.schedule){
@@ -314,7 +345,7 @@ app.post('/api/orders', (req, res) => {
   }
   const order = {
     id: 'o_' + Date.now() + '_' + Math.floor(Math.random() * 100000),
-    num: String(Math.floor(100 + Math.random() * 900)),
+    num: nextOrderNumber(),
     items: body.items,
     total: body.total || 0,
     note: body.note || '',
@@ -333,7 +364,7 @@ app.post('/api/orders', (req, res) => {
   res.json(order);
 });
 
-app.patch('/api/orders/:id', (req, res) => {
+app.patch('/api/orders/:id', requireAdminAuth, (req, res) => {
   const idx = data.orders.findIndex(o => o.id === req.params.id);
   if(idx === -1) return res.status(404).json({ error: 'Order not found' });
   data.orders[idx] = { ...data.orders[idx], ...req.body };
@@ -342,7 +373,7 @@ app.patch('/api/orders/:id', (req, res) => {
   res.json(data.orders[idx]);
 });
 
-app.delete('/api/orders/:id', (req, res) => {
+app.delete('/api/orders/:id', requireAdminAuth, (req, res) => {
   data.orders = data.orders.filter(o => o.id !== req.params.id);
   saveData();
   res.json({ ok: true });
