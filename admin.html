@@ -127,7 +127,8 @@ const DEFAULT_SITE = {
   name: 'MAPLE & MAIN',
   tagline: 'Est. on Main Street',
   payNote: 'No online payment — please pay at the counter or with your server.',
-  contact: { phone: '', address: '', hours: '' }
+  contact: { phone: '', address: '', hours: '' },
+  notifyEmail: ''
 };
 const DEFAULT_SEO = {
   title: 'Maple & Main · Order Online',
@@ -194,6 +195,7 @@ function renderSite(){
     <div class="field"><label>Contact Phone</label><input id="contactPhone" value="${escapeHtml(contact.phone)}" placeholder="(555) 123-4567"></div>
     <div class="field"><label>Contact Address</label><input id="contactAddress" value="${escapeHtml(contact.address)}" placeholder="123 Main St, Anytown"></div>
     <div class="field"><label>Hours</label><input id="contactHours" value="${escapeHtml(contact.hours)}" placeholder="Mon–Sat 9am–9pm"></div>
+    <div class="field"><label>Order Notification Email</label><input id="notifyEmail" type="email" value="${escapeHtml(state.siteInfo.notifyEmail||'')}" placeholder="you@example.com"></div>
   `;
   document.getElementById('siteName').oninput = (e)=>{ state.siteInfo.name = e.target.value; };
   document.getElementById('siteTagline').oninput = (e)=>{ state.siteInfo.tagline = e.target.value; };
@@ -201,6 +203,7 @@ function renderSite(){
   document.getElementById('contactPhone').oninput = (e)=>{ state.siteInfo.contact.phone = e.target.value; };
   document.getElementById('contactAddress').oninput = (e)=>{ state.siteInfo.contact.address = e.target.value; };
   document.getElementById('contactHours').oninput = (e)=>{ state.siteInfo.contact.hours = e.target.value; };
+  document.getElementById('notifyEmail').oninput = (e)=>{ state.siteInfo.notifyEmail = e.target.value; };
 }
 
 function renderSeo(){

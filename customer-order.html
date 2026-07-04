@@ -226,10 +226,11 @@
   <div class="nav-menu-wrap">
     <button class="nav-menu-btn" id="navMenuBtn">☰</button>
     <div class="nav-dropdown" id="navDropdown">
+      <div class="nav-item" id="navHomeBtn">Home</div>
       <div class="nav-item" id="navContactBtn">Contact</div>
     </div>
   </div>
-  <div class="brand-center"><strong id="brandNameCenter">MAPLE &amp; MAIN</strong></div>
+  <button class="brand-center" id="brandHomeBtn" style="background:none;border:none;cursor:pointer;padding:0;"><strong id="brandNameCenter">MAPLE &amp; MAIN</strong></button>
   <button class="cart-btn" id="cartBtnTop">🛒 <span class="cart-btn-count" id="cartBtnCount">0</span></button>
 </div>
 
@@ -697,6 +698,18 @@ function closeContact(){
   document.getElementById('contactBackdrop').classList.remove('open');
   document.getElementById('contactModal').classList.remove('open');
 }
+
+function goHome(){
+  document.getElementById('navDropdown').classList.remove('open');
+  closeContact();
+  closeDrawer();
+  closeItemModal();
+  activeCat = MENU[0].cat;
+  renderCustomer();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+document.getElementById('navHomeBtn').onclick = goHome;
+document.getElementById('brandHomeBtn').onclick = goHome;
 function renderContact(){
   const c = SITE.contact || {};
   const rows = [];

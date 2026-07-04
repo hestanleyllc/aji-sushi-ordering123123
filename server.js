@@ -1,6 +1,34 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const nodemailer = require('nodemailer');
+
+let mailTransporter = null;
+if(process.env.EMAIL_USER && process.env.EMAIL_PASS){
+  mailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  });
+} else {
+  console.log('Email notifications disabled — set EMAIL_USER and EMAIL_PASS to enable them.');
+}
+
+function sendNewOrderEmail(order){
+  const to = data.config.siteInfo && data.config.siteInfo.notifyEmail;
+  if(!mailTransporter || !to) return;
+  const itemLines = order.items.map(it=>{
+    const opts = it.options ? Object.entries(it.options).map(([k,v])=>`    - ${k}: ${v}`).join('\n') : '';
+    const note = it.note ? `\n    Note: ${it.note}` : '';
+    return `  x${it.qty} ${it.name} ($${it.price})\n${opts}${note}`;
+  }).join('\n');
+  const text = `New order #${order.num}\n\n${itemLines}\n\nTotal: $${order.total}\nCustomer: ${order.name || '—'}\nPhone: ${order.phone || '—'}\nType: ${order.location}\n${order.note ? 'Order note: '+order.note : ''}`;
+  mailTransporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to,
+    subject: `New order #${order.num} — $${order.total}`,
+    text,
+  }).catch(err => console.error('Failed to send order notification email', err));
+}
 
 const app = express();
 app.use(express.json());
@@ -61,7 +89,8 @@ const DEFAULT_CONFIG = {
     name: 'MAPLE & MAIN',
     tagline: 'Est. on Main Street',
     payNote: 'No online payment — please pay at the counter or with your server.',
-    contact: { phone: '', address: '', hours: '' }
+    contact: { phone: '', address: '', hours: '' },
+    notifyEmail: ''
   },
   seo: {
     title: 'Maple & Main · Order Online',
@@ -69,18 +98,18 @@ const DEFAULT_CONFIG = {
   },
   menu: [
     {cat:'Griddle & Eggs', items:[
-      {id:'d1', name:'Buttermilk Pancake Stack', desc:'Three tall stack, warm maple syrup', price:11, soldOut:false},
-      {id:'d2', name:'The Main Street Skillet', desc:'Eggs, hash browns, cheddar, peppers', price:13, soldOut:false},
+      {id:'d1', name:'Buttermilk Pancake Stack', desc:'Three tall stack, warm maple syrup', price:11, soldOut:false, optionGroups:[]},
+      {id:'d2', name:'The Main Street Skillet', desc:'Eggs, hash browns, cheddar, peppers', price:13, soldOut:false, optionGroups:[]},
     ]},
     {cat:'From the Grill', items:[
-      {id:'d3', name:'Bacon Cheeseburger', desc:'Half-pound patty, smoked bacon, fries', price:15, soldOut:false},
-      {id:'d4', name:'BBQ Pulled Pork Sandwich', desc:'Slow-smoked, house slaw, brioche bun', price:14, soldOut:false},
-      {id:'d5', name:'Baked Mac & Cheese', desc:'Three-cheese blend, toasted crumb topping', price:12, soldOut:false},
+      {id:'d3', name:'Bacon Cheeseburger', desc:'Half-pound patty, smoked bacon, fries', price:15, soldOut:false, optionGroups:[]},
+      {id:'d4', name:'BBQ Pulled Pork Sandwich', desc:'Slow-smoked, house slaw, brioche bun', price:14, soldOut:false, optionGroups:[]},
+      {id:'d5', name:'Baked Mac & Cheese', desc:'Three-cheese blend, toasted crumb topping', price:12, soldOut:false, optionGroups:[]},
     ]},
     {cat:'Fountain & Sides', items:[
-      {id:'d6', name:'Hand-Spun Milkshake', desc:'Vanilla, chocolate, or strawberry', price:7, soldOut:false},
-      {id:'d7', name:'Sweet Tea', desc:'Southern-style, brewed daily', price:3, soldOut:false},
-      {id:'d8', name:'Slice of Apple Pie', desc:'Warm, with a scoop of vanilla', price:6, soldOut:false},
+      {id:'d6', name:'Hand-Spun Milkshake', desc:'Vanilla, chocolate, or strawberry', price:7, soldOut:false, optionGroups:[]},
+      {id:'d7', name:'Sweet Tea', desc:'Southern-style, brewed daily', price:3, soldOut:false, optionGroups:[]},
+      {id:'d8', name:'Slice of Apple Pie', desc:'Warm, with a scoop of vanilla', price:6, soldOut:false, optionGroups:[]},
     ]},
   ]
 };
@@ -130,6 +159,35 @@ app.get('/api/orders', (req, res) => {
   res.json(data.orders);
 });
 
+// ---- Real-time push (Server-Sent Events) so the kitchen alarm rings instantly ----
+let sseClients = [];
+
+app.get('/api/events', (req, res) => {
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders();
+  res.write('retry: 2000\n\n');
+  sseClients.push(res);
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n'); } catch(e) {}
+  }, 20000);
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients = sseClients.filter(c => c !== res);
+  });
+});
+
+function broadcast(event, payload){
+  const message = `data: ${JSON.stringify({ type: event, ...payload })}\n\n`;
+  sseClients.forEach(res => {
+    try { res.write(message); } catch(e) {}
+  });
+}
+
 app.get('/api/orders/:id', (req, res) => {
   const order = data.orders.find(o => o.id === req.params.id);
   if(!order) return res.status(404).json({ error: 'Order not found' });
@@ -156,6 +214,8 @@ app.post('/api/orders', (req, res) => {
   };
   data.orders.push(order);
   saveData();
+  broadcast('new-order', { order });
+  sendNewOrderEmail(order);
   res.json(order);
 });
 
@@ -164,6 +224,7 @@ app.patch('/api/orders/:id', (req, res) => {
   if(idx === -1) return res.status(404).json({ error: 'Order not found' });
   data.orders[idx] = { ...data.orders[idx], ...req.body };
   saveData();
+  broadcast('order-updated', { order: data.orders[idx] });
   res.json(data.orders[idx]);
 });
 
