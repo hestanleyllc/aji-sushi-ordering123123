@@ -50,8 +50,8 @@
     padding:16px 20px;border-bottom:1px solid var(--steel-line);
     position:sticky;top:0;background:var(--steel);z-index:20;
   }
-  .brand-center{text-align:center;line-height:1;}
-  .brand-center strong{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.5px;}
+  .brand-center{text-align:center;line-height:1;color:#fff;}
+  .brand-center strong{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.5px;color:#fff;}
   .cart-btn{
     justify-self:end;
     display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--cream);
@@ -566,7 +566,7 @@ function addModalItemToCart(){
   const options = {};
   (dish.optionGroups||[]).forEach(g=>{
     const sel = modalSelections[g.id];
-    options[g.label] = g.type==='multi' ? sel.join(', ') : sel;
+    options[g.label] = g.type==='multi' ? [...sel] : sel;
   });
   cartItems.push({
     lineId: 'ci_'+Date.now()+'_'+Math.floor(Math.random()*10000),
@@ -604,7 +604,12 @@ function renderDrawer(showConfirm){
     html += '<div class="empty-cart">Your cart is empty — pick something off the menu</div>';
   } else {
     cartItems.forEach(ci=>{
-      const optLines = Object.entries(ci.options||{}).map(([label,val])=>`<div class="sub">${escapeHtml(label)}: ${escapeHtml(val)}</div>`).join('');
+      const optLines = Object.entries(ci.options||{}).map(([label,val])=>{
+        if(Array.isArray(val)){
+          return `<div class="sub">${escapeHtml(label)}:</div>` + val.map(v=>`<div class="sub" style="padding-left:10px;">– ${escapeHtml(v)}</div>`).join('');
+        }
+        return `<div class="sub">${escapeHtml(label)}: ${escapeHtml(val)}</div>`;
+      }).join('');
       const noteLine = ci.note ? `<div class="sub">Note: ${escapeHtml(ci.note)}</div>` : '';
       html += `<div class="cart-line" style="align-items:flex-start;">
         <div>
@@ -621,9 +626,6 @@ function renderDrawer(showConfirm){
         <div class="mono">$${ci.price*ci.qty}</div>
       </div>`;
     });
-    if(SITE.contact && SITE.contact.address){
-      html += `<div class="pickup-address-note">📍 Pickup Address: ${escapeHtml(SITE.contact.address)}</div>`;
-    }
     html += `
       <div class="field">
         <label>Your name</label>
@@ -637,6 +639,7 @@ function renderDrawer(showConfirm){
         <label>Notes (optional)</label>
         <textarea id="orderNote" rows="2" placeholder="Allergies, no onions, extra sauce…"></textarea>
       </div>
+      ${(SITE.contact && SITE.contact.address) ? `<div class="pickup-address-note">📍 Pickup Address: ${escapeHtml(SITE.contact.address)}</div>` : ''}
       <div class="pay-confirm-row">
         <input type="checkbox" id="payInStoreConfirm">
         <label for="payInStoreConfirm">Pay in store — I understand payment is not collected online.</label>

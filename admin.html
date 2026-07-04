@@ -49,13 +49,25 @@
   }
   .icon-btn.del{background:#5c2b28;color:#ffb4ac;}
   .dish-row{
-    display:grid;grid-template-columns:1.3fr 1.6fr 80px auto auto auto;gap:8px;align-items:center;
+    display:grid;grid-template-columns:auto 1.3fr 1.6fr 80px auto auto auto;gap:8px;align-items:center;
     background:var(--cream);border-radius:8px;padding:8px;margin-bottom:8px;
   }
   @media(max-width:640px){ .dish-row{grid-template-columns:1fr 1fr;} }
   .dish-row input[type="text"], .dish-row input[type="number"]{
     padding:8px;border-radius:6px;border:1px solid #cbbd94;background:#fff;color:var(--ink);font-size:13px;
   }
+  .move-btns{display:flex;flex-direction:column;gap:2px;}
+  .move-btns button{
+    width:24px;height:18px;border:1px solid #cbbd94;background:#fff;border-radius:4px;
+    cursor:pointer;font-size:10px;color:#6b5d38;line-height:1;padding:0;
+  }
+  .move-btns button:disabled{opacity:0.3;cursor:default;}
+  .cat-move-btns{display:flex;gap:4px;}
+  .cat-move-btns button{
+    width:30px;height:30px;border:1px solid var(--steel-line);background:var(--steel);color:var(--cream);
+    border-radius:6px;cursor:pointer;font-size:12px;
+  }
+  .cat-move-btns button:disabled{opacity:0.3;cursor:default;}
   .icon-btn.opts{background:#4a4238;color:var(--mustard);}
   .icon-btn.opts.active{background:var(--mustard);color:var(--ink);}
   .options-panel{
@@ -287,6 +299,10 @@ function renderMenu(){
   state.menu.forEach((sec, ci)=>{
     html += `<div class="cat-card">
       <div class="cat-title-row">
+        <div class="cat-move-btns">
+          <button data-act="moveCatUp" data-ci="${ci}" ${ci===0?'disabled':''}>▲</button>
+          <button data-act="moveCatDown" data-ci="${ci}" ${ci===state.menu.length-1?'disabled':''}>▼</button>
+        </div>
         <input type="text" class="cat-name" data-ci="${ci}" value="${escapeHtml(sec.cat)}">
         <button class="icon-btn del" data-act="delCat" data-ci="${ci}">Delete Category</button>
       </div>`;
@@ -295,6 +311,10 @@ function renderMenu(){
       const isOpen = !!openOptionsFor[it.id];
       html += `
         <div class="dish-row">
+          <div class="move-btns">
+            <button data-act="moveDishUp" data-ci="${ci}" data-di="${di}" ${di===0?'disabled':''}>▲</button>
+            <button data-act="moveDishDown" data-ci="${ci}" data-di="${di}" ${di===sec.items.length-1?'disabled':''}>▼</button>
+          </div>
           <input type="text" data-ci="${ci}" data-di="${di}" data-field="name" value="${escapeHtml(it.name)}" placeholder="Dish name">
           <input type="text" data-ci="${ci}" data-di="${di}" data-field="desc" value="${escapeHtml(it.desc)}" placeholder="Description">
           <input type="number" data-ci="${ci}" data-di="${di}" data-field="price" value="${it.price}" min="0" step="0.5">
@@ -349,6 +369,40 @@ function bindMenuEvents(){
   document.querySelectorAll('[data-act="delDish"]').forEach(btn=>{
     btn.onclick = ()=>{
       state.menu[btn.dataset.ci].items.splice(btn.dataset.di,1);
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="moveCatUp"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = Number(btn.dataset.ci);
+      if(ci<=0) return;
+      [state.menu[ci-1], state.menu[ci]] = [state.menu[ci], state.menu[ci-1]];
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="moveCatDown"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = Number(btn.dataset.ci);
+      if(ci>=state.menu.length-1) return;
+      [state.menu[ci+1], state.menu[ci]] = [state.menu[ci], state.menu[ci+1]];
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="moveDishUp"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = Number(btn.dataset.ci), di = Number(btn.dataset.di);
+      const items = state.menu[ci].items;
+      if(di<=0) return;
+      [items[di-1], items[di]] = [items[di], items[di-1]];
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="moveDishDown"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = Number(btn.dataset.ci), di = Number(btn.dataset.di);
+      const items = state.menu[ci].items;
+      if(di>=items.length-1) return;
+      [items[di+1], items[di]] = [items[di], items[di+1]];
       renderMenu();
     };
   });

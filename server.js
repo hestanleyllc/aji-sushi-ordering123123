@@ -17,7 +17,10 @@ function sendNewOrderEmail(order){
   const to = data.config.siteInfo && data.config.siteInfo.notifyEmail;
   if(!mailTransporter || !to) return;
   const itemLines = order.items.map(it=>{
-    const opts = it.options ? Object.entries(it.options).map(([k,v])=>`    - ${k}: ${v}`).join('\n') : '';
+    const opts = it.options ? Object.entries(it.options).map(([k,v])=>{
+      if(Array.isArray(v)) return `    ${k}:\n` + v.map(x=>`      – ${x}`).join('\n');
+      return `    ${k}: ${v}`;
+    }).join('\n') : '';
     const note = it.note ? `\n    Note: ${it.note}` : '';
     return `  x${it.qty} ${it.name} ($${it.price})\n${opts}${note}`;
   }).join('\n');
@@ -47,7 +50,15 @@ function buildReceiptText(order){
   order.items.forEach(it=>{
     lines.push(`x${it.qty}  ${it.name}  $${(it.price*it.qty).toFixed(2)}`);
     if(it.options){
-      Object.entries(it.options).forEach(([k,v])=>{ if(v) lines.push(`   ${k}: ${v}`); });
+      Object.entries(it.options).forEach(([k,v])=>{
+        if(!v) return;
+        if(Array.isArray(v)){
+          lines.push(`   ${k}:`);
+          v.forEach(x=> lines.push(`     - ${x}`));
+        } else {
+          lines.push(`   ${k}: ${v}`);
+        }
+      });
     }
     if(it.note) lines.push(`   Note: ${it.note}`);
   });
@@ -190,10 +201,41 @@ const DEFAULT_CONFIG = {
   ]
 };
 
-function loadData(){
-  if(!fs.existsSync(DATA_FILE)){
-    return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 } };
+// Optional free persistent storage using Upstash Redis (no credit card, no paid Render plan needed).
+// If UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set, data is stored there instead of a local file.
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const useUpstash = !!(UPSTASH_URL && UPSTASH_TOKEN);
+const UPSTASH_KEY = 'maple-and-main-data';
+
+if(useUpstash){
+  console.log('Using Upstash Redis for persistent storage.');
+} else {
+  console.log('Using local file storage (' + DATA_FILE + '). Set UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN, or a Render persistent disk, to avoid data loss on restart.');
+}
+
+function freshData(){
+  return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 } };
+}
+
+async function loadData(){
+  if(useUpstash){
+    try{
+      const res = await fetch(`${UPSTASH_URL}/get/${UPSTASH_KEY}`, {
+        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+      });
+      const json = await res.json();
+      if(json && json.result){
+        const parsed = JSON.parse(json.result);
+        if(!parsed.config) parsed.config = DEFAULT_CONFIG;
+        if(!parsed.orders) parsed.orders = [];
+        if(!parsed.dailyOrderCounter) parsed.dailyOrderCounter = { date: '', count: 0 };
+        return parsed;
+      }
+    }catch(e){ console.error('Failed to load from Upstash', e); }
+    return freshData();
   }
+  if(!fs.existsSync(DATA_FILE)) return freshData();
   try{
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     if(!parsed.config) parsed.config = DEFAULT_CONFIG;
@@ -201,19 +243,35 @@ function loadData(){
     if(!parsed.dailyOrderCounter) parsed.dailyOrderCounter = { date: '', count: 0 };
     return parsed;
   }catch(e){
-    return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 } };
+    return freshData();
   }
 }
 
-let data = loadData();
+let data;
 let saveQueue = Promise.resolve();
-function saveData(){
-  saveQueue = saveQueue.then(() => new Promise((resolve) => {
-    fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), (err) => {
+
+async function persistData(){
+  const payload = JSON.stringify(data, null, 2);
+  if(useUpstash){
+    try{
+      await fetch(`${UPSTASH_URL}/set/${UPSTASH_KEY}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+        body: payload,
+      });
+    }catch(e){ console.error('Failed to save to Upstash', e); }
+    return;
+  }
+  return new Promise((resolve) => {
+    fs.writeFile(DATA_FILE, payload, (err) => {
       if(err) console.error('Failed to save data.json', err);
       resolve();
     });
-  }));
+  });
+}
+
+function saveData(){
+  saveQueue = saveQueue.then(() => persistData());
   return saveQueue;
 }
 
@@ -381,6 +439,7 @@ app.delete('/api/orders/:id', requireAdminAuth, (req, res) => {
 
 // Housekeeping: drop orders older than 48h so data.json doesn't grow forever
 setInterval(() => {
+  if(!data) return;
   const cutoff = Date.now() - 48 * 60 * 60 * 1000;
   const before = data.orders.length;
   data.orders = data.orders.filter(o => o.createdAt > cutoff);
@@ -388,6 +447,15 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log('Maple & Main server running on port ' + PORT);
+loadData().then((loaded) => {
+  data = loaded;
+  app.listen(PORT, () => {
+    console.log('Maple & Main server running on port ' + PORT);
+  });
+}).catch((e) => {
+  console.error('Failed to load initial data, starting with defaults', e);
+  data = freshData();
+  app.listen(PORT, () => {
+    console.log('Maple & Main server running on port ' + PORT);
+  });
 });
