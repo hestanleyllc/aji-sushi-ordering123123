@@ -332,7 +332,9 @@ async function renderKitchen(){
           ${nameHtml}
           <ul class="ticket-items">${itemsHtml}</ul>
           ${noteHtml}
-          <div class="ticket-total"><span>Total (pay in store)</span><span>$${o.total}</span></div>
+          ${o.subtotal!=null ? `<div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;"><span>Subtotal</span><span>$${Number(o.subtotal).toFixed(2)}</span></div>
+          <div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;margin-bottom:2px;"><span>Tax</span><span>$${Number(o.tax||0).toFixed(2)}</span></div>` : ''}
+          <div class="ticket-total"><span>Total (pay in store)</span><span>$${Number(o.total).toFixed(2)}</span></div>
           ${bodyHtml}
         </div>`;
       });
