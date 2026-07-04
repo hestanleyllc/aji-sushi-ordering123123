@@ -126,7 +126,7 @@
     display:flex;align-items:center;justify-content:center;
   }
   .qty-btn.add{background:var(--grill-green);border-color:var(--grill-green);color:#fff;}
-  .qty-num{width:18px;text-align:center;font-family:'Space Mono',monospace;font-size:14px;}
+  .qty-num{white-space:nowrap;font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);}
 
   .cart-fab{
     position:fixed;left:16px;right:16px;bottom:16px;max-width:688px;margin:0 auto;
@@ -190,6 +190,33 @@
     margin-top:10px;display:inline-block;background:var(--diner-red);color:#fff;
     padding:10px 20px;border-radius:8px;font-family:'Space Mono',monospace;font-size:18px;font-weight:700;
   }
+
+  .item-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:70;}
+  .item-modal-backdrop.open{display:block;}
+  .item-modal{
+    display:none;position:fixed;left:0;right:0;bottom:0;max-height:88vh;overflow-y:auto;
+    background:var(--cream);color:var(--ink);border-radius:16px 16px 0 0;
+    padding:0 18px 20px;z-index:71;
+  }
+  .item-modal.open{display:block;}
+  .item-modal .checker{border-radius:16px 16px 0 0;}
+  .item-modal h2{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:16px 0 4px;}
+  .item-modal .item-desc{font-size:13px;color:#7a6c46;margin-bottom:4px;}
+  .item-modal .item-price{font-family:'Space Mono',monospace;color:var(--diner-red);font-weight:700;margin-bottom:12px;}
+  .option-group{margin-top:16px;}
+  .option-group-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#4b3f22;margin-bottom:8px;}
+  .option-group-hint{font-size:11px;color:#8a7a52;font-weight:600;margin-left:6px;text-transform:none;letter-spacing:0;}
+  .option-choice{
+    display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;
+    border:1px solid #cbbd94;background:#fff;margin-bottom:6px;cursor:pointer;font-size:13px;
+  }
+  .option-choice.selected{background:var(--mustard);border-color:var(--mustard);font-weight:700;}
+  .option-choice input{pointer-events:none;}
+  .qty-stepper-row{
+    display:flex;align-items:center;justify-content:center;gap:18px;margin-top:18px;
+  }
+  .qty-stepper-row .qty-btn{width:36px;height:36px;font-size:18px;}
+  .qty-stepper-row .qty-display{font-family:'Space Mono',monospace;font-size:20px;font-weight:700;min-width:24px;text-align:center;}
 </style>
 </head>
 <body>
@@ -214,6 +241,9 @@
   <button class="submit-btn" id="closeContact" style="background:var(--grill-green);">Close</button>
 </div>
 
+<div class="item-modal-backdrop" id="itemModalBackdrop"></div>
+<div class="item-modal" id="itemModal"></div>
+
 <div class="customer" id="customerView"></div>
 <div class="cart-fab" id="cartFab" style="display:none;">
   <span><span class="count" id="cartCount">0</span>View order</span>
@@ -231,28 +261,33 @@ const DEFAULT_SITE = {
 };
 const DEFAULT_MENU = [
   {cat:'Griddle & Eggs', items:[
-    {id:'d1', name:'Buttermilk Pancake Stack', desc:'Three tall stack, warm maple syrup', price:11, emoji:'🥞', soldOut:false},
-    {id:'d2', name:'The Main Street Skillet', desc:'Eggs, hash browns, cheddar, peppers', price:13, emoji:'🍳', soldOut:false},
+    {id:'d1', name:'Buttermilk Pancake Stack', desc:'Three tall stack, warm maple syrup', price:11, emoji:'🥞', soldOut:false, optionGroups:[]},
+    {id:'d2', name:'The Main Street Skillet', desc:'Eggs, hash browns, cheddar, peppers', price:13, emoji:'🍳', soldOut:false, optionGroups:[]},
   ]},
   {cat:'From the Grill', items:[
-    {id:'d3', name:'Bacon Cheeseburger', desc:'Half-pound patty, smoked bacon, fries', price:15, emoji:'🍔', soldOut:false},
-    {id:'d4', name:'BBQ Pulled Pork Sandwich', desc:'Slow-smoked, house slaw, brioche bun', price:14, emoji:'🥪', soldOut:false},
-    {id:'d5', name:'Baked Mac & Cheese', desc:'Three-cheese blend, toasted crumb topping', price:12, emoji:'🧀', soldOut:false},
+    {id:'d3', name:'Bacon Cheeseburger', desc:'Half-pound patty, smoked bacon, fries', price:15, emoji:'🍔', soldOut:false, optionGroups:[]},
+    {id:'d4', name:'BBQ Pulled Pork Sandwich', desc:'Slow-smoked, house slaw, brioche bun', price:14, emoji:'🥪', soldOut:false, optionGroups:[]},
+    {id:'d5', name:'Baked Mac & Cheese', desc:'Three-cheese blend, toasted crumb topping', price:12, emoji:'🧀', soldOut:false, optionGroups:[]},
   ]},
   {cat:'Fountain & Sides', items:[
-    {id:'d6', name:'Hand-Spun Milkshake', desc:'Vanilla, chocolate, or strawberry', price:7, emoji:'🥤', soldOut:false},
-    {id:'d7', name:'Sweet Tea', desc:'Southern-style, brewed daily', price:3, emoji:'🧊', soldOut:false},
-    {id:'d8', name:'Slice of Apple Pie', desc:'Warm, with a scoop of vanilla', price:6, emoji:'🥧', soldOut:false},
+    {id:'d6', name:'Hand-Spun Milkshake', desc:'Vanilla, chocolate, or strawberry', price:7, emoji:'🥤', soldOut:false, optionGroups:[]},
+    {id:'d7', name:'Sweet Tea', desc:'Southern-style, brewed daily', price:3, emoji:'🧊', soldOut:false, optionGroups:[]},
+    {id:'d8', name:'Slice of Apple Pie', desc:'Warm, with a scoop of vanilla', price:6, emoji:'🥧', soldOut:false, optionGroups:[]},
   ]},
 ];
 
 let MENU = DEFAULT_MENU;
 let SITE = DEFAULT_SITE;
-let cart = {};
+let cartItems = []; // [{lineId, dishId, name, price, qty, note, options:{label:value}}]
 let activeCat = MENU[0].cat;
-let lastOrderNum = null;
 let trackingOrderId = null;
 let trackingTimer = null;
+
+// item modal state
+let modalDish = null;
+let modalQty = 1;
+let modalNote = '';
+let modalSelections = {}; // groupId -> string (single) or array (multi)
 
 function applySiteInfo(){
   document.getElementById('brandNameCenter').textContent = SITE.name;
@@ -264,7 +299,10 @@ async function loadConfig(silent){
     const res = await fetch('/api/config');
     if(res.ok){
       const cfg = await res.json();
-      if(cfg.menu && cfg.menu.length) MENU = cfg.menu;
+      if(cfg.menu && cfg.menu.length){
+        cfg.menu.forEach(sec=>sec.items.forEach(it=>{ if(!Array.isArray(it.optionGroups)) it.optionGroups = []; }));
+        MENU = cfg.menu;
+      }
       if(cfg.siteInfo) SITE = cfg.siteInfo;
     }
   }catch(e){}
@@ -316,6 +354,10 @@ function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function cartQtyForDish(dishId){
+  return cartItems.filter(ci=>ci.dishId===dishId).reduce((sum,ci)=>sum+ci.qty,0);
+}
+
 function renderCustomer(){
   const el = document.getElementById('customerView');
   let html = '<div class="cat-rail">';
@@ -326,7 +368,7 @@ function renderCustomer(){
   MENU.forEach((sec,i)=>{
     html += `<div class="cat-title" id="cat-section-${i}">${escapeHtml(sec.cat)}</div>`;
     sec.items.forEach(it=>{
-      const qty = cart[it.id]||0;
+      const inCartQty = cartQtyForDish(it.id);
       html += `
         <div class="dish">
           <div class="dish-info">
@@ -336,8 +378,8 @@ function renderCustomer(){
           </div>
           ${it.soldOut ? '' : `
           <div class="qty-ctrl">
-            ${qty>0?`<div class="qty-btn" data-act="dec" data-id="${it.id}">−</div><div class="qty-num">${qty}</div>`:''}
-            <div class="qty-btn add" data-act="inc" data-id="${it.id}">+</div>
+            ${inCartQty>0?`<div class="qty-num">${inCartQty} in cart</div>`:''}
+            <div class="qty-btn add" data-act="openItem" data-id="${it.id}">+</div>
           </div>`}
         </div>`;
     });
@@ -348,10 +390,7 @@ function renderCustomer(){
 
 function cartCountTotal(){
   let count=0, total=0;
-  Object.entries(cart).forEach(([id,qty])=>{
-    const item = MENU.flatMap(s=>s.items).find(i=>i.id===id);
-    if(item){count+=qty; total+=qty*item.price;}
-  });
+  cartItems.forEach(ci=>{ count+=ci.qty; total+=ci.qty*ci.price; });
   return {count,total};
 }
 
@@ -363,6 +402,121 @@ function updateCartFab(){
   document.getElementById('cartBtnCount').textContent = count;
 }
 
+// ---------- item options modal ----------
+function openItemModal(dishId){
+  const dish = MENU.flatMap(s=>s.items).find(i=>i.id===dishId);
+  if(!dish) return;
+  modalDish = dish;
+  modalQty = 1;
+  modalNote = '';
+  modalSelections = {};
+  (dish.optionGroups||[]).forEach(g=>{ modalSelections[g.id] = g.type==='multi' ? [] : null; });
+  renderItemModal();
+  document.getElementById('itemModalBackdrop').classList.add('open');
+  document.getElementById('itemModal').classList.add('open');
+}
+function closeItemModal(){
+  document.getElementById('itemModalBackdrop').classList.remove('open');
+  document.getElementById('itemModal').classList.remove('open');
+  modalDish = null;
+}
+function canAddItem(){
+  if(!modalDish) return false;
+  return (modalDish.optionGroups||[]).every(g=>{
+    const sel = modalSelections[g.id];
+    return g.type==='multi' ? (sel && sel.length===g.count) : !!sel;
+  });
+}
+function renderItemModal(){
+  const dish = modalDish;
+  if(!dish) return;
+  const modal = document.getElementById('itemModal');
+  let groupsHtml = '';
+  (dish.optionGroups||[]).forEach(g=>{
+    const sel = modalSelections[g.id];
+    if(g.type==='multi'){
+      const count = (sel||[]).length;
+      groupsHtml += `<div class="option-group">
+        <div class="option-group-label">${escapeHtml(g.label)}<span class="option-group-hint">(${count}/${g.count} selected)</span></div>
+        ${(g.choices||[]).map(c=>{
+          const isSel = sel.includes(c);
+          const disable = !isSel && count>=g.count;
+          return `<div class="option-choice ${isSel?'selected':''}" data-gid="${g.id}" data-choice="${escapeHtml(c)}" data-type="multi" style="${disable?'opacity:0.45;':''}">
+            <input type="checkbox" ${isSel?'checked':''} ${disable?'disabled':''}> ${escapeHtml(c)}
+          </div>`;
+        }).join('')}
+      </div>`;
+    } else {
+      groupsHtml += `<div class="option-group">
+        <div class="option-group-label">${escapeHtml(g.label)}</div>
+        ${(g.choices||[]).map(c=>{
+          const isSel = sel===c;
+          return `<div class="option-choice ${isSel?'selected':''}" data-gid="${g.id}" data-choice="${escapeHtml(c)}" data-type="single">
+            <input type="radio" ${isSel?'checked':''}> ${escapeHtml(c)}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+  });
+  const canAdd = canAddItem();
+  modal.innerHTML = `
+    <div class="checker"></div>
+    <h2>${escapeHtml(dish.name)}</h2>
+    <div class="item-desc">${escapeHtml(dish.desc)}</div>
+    <div class="item-price mono">$${dish.price}</div>
+    ${groupsHtml}
+    <div class="field">
+      <label>Note for this item (optional)</label>
+      <textarea id="modalNoteInput" rows="2" placeholder="e.g. no wasabi, extra spicy…">${escapeHtml(modalNote)}</textarea>
+    </div>
+    <div class="qty-stepper-row">
+      <div class="qty-btn" id="modalDec">−</div>
+      <div class="qty-display" id="modalQtyDisplay">${modalQty}</div>
+      <div class="qty-btn add" id="modalInc">+</div>
+    </div>
+    <button class="submit-btn" id="addItemBtn" ${canAdd?'':'disabled'}>Add to Cart — $${(dish.price*modalQty)}</button>
+  `;
+  document.getElementById('modalNoteInput').oninput = (e)=>{ modalNote = e.target.value; };
+  document.getElementById('modalDec').onclick = ()=>{ if(modalQty>1){ modalQty--; renderItemModal(); } };
+  document.getElementById('modalInc').onclick = ()=>{ modalQty++; renderItemModal(); };
+  modal.querySelectorAll('.option-choice').forEach(el=>{
+    el.onclick = ()=>{
+      const gid = el.dataset.gid, choice = el.dataset.choice, type = el.dataset.type;
+      if(type==='single'){
+        modalSelections[gid] = choice;
+      } else {
+        const g = (dish.optionGroups||[]).find(x=>x.id===gid);
+        const arr = modalSelections[gid] || [];
+        const idx = arr.indexOf(choice);
+        if(idx>-1){ arr.splice(idx,1); }
+        else if(arr.length < g.count){ arr.push(choice); }
+        modalSelections[gid] = arr;
+      }
+      renderItemModal();
+    };
+  });
+  const addBtn = document.getElementById('addItemBtn');
+  if(addBtn && canAdd){
+    addBtn.onclick = addModalItemToCart;
+  }
+}
+function addModalItemToCart(){
+  const dish = modalDish;
+  if(!dish || !canAddItem()) return;
+  const options = {};
+  (dish.optionGroups||[]).forEach(g=>{
+    const sel = modalSelections[g.id];
+    options[g.label] = g.type==='multi' ? sel.join(', ') : sel;
+  });
+  cartItems.push({
+    lineId: 'ci_'+Date.now()+'_'+Math.floor(Math.random()*10000),
+    dishId: dish.id, name: dish.name, price: dish.price,
+    qty: modalQty, note: modalNote, options
+  });
+  closeItemModal();
+  renderCustomer();
+}
+
 function renderDrawer(showConfirm){
   const drawer = document.getElementById('drawer');
   if(showConfirm){
@@ -370,10 +524,6 @@ function renderDrawer(showConfirm){
       <div class="checker"></div>
       <div class="confirm">
         <div style="font-size:13px;color:#7a6c46;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Order sent to the restaurant</div>
-        <div class="stub">
-          <div style="font-size:11px;color:#7a6c46;text-transform:uppercase;letter-spacing:1px;">Order No.</div>
-          <div class="num mono">${lastOrderNum}</div>
-        </div>
         <div id="trackStatus" class="track-status">Waiting for the restaurant to confirm your pickup time…</div>
         <div id="trackTime" class="track-time" style="display:none;"></div>
         <div style="font-size:12px;color:#7a6c46;margin-top:10px;">Please pay in store when you arrive or when your order is ready.</div>
@@ -382,7 +532,7 @@ function renderDrawer(showConfirm){
     document.getElementById('closeConfirm').onclick = ()=>{
       if(document.getElementById('closeConfirm').disabled) return;
       stopTracking();
-      cart = {};
+      cartItems = [];
       renderCustomer();
       closeDrawer();
     };
@@ -393,12 +543,22 @@ function renderDrawer(showConfirm){
   if(count===0){
     html += '<div class="empty-cart">Your cart is empty — pick something off the menu</div>';
   } else {
-    Object.entries(cart).forEach(([id,qty])=>{
-      const item = MENU.flatMap(s=>s.items).find(i=>i.id===id);
-      if(!item||qty<=0) return;
-      html += `<div class="cart-line">
-        <div><div class="name">${escapeHtml(item.name)}</div><div class="sub">$${item.price} × ${qty}</div></div>
-        <div class="mono">$${item.price*qty}</div>
+    cartItems.forEach(ci=>{
+      const optLines = Object.entries(ci.options||{}).map(([label,val])=>`<div class="sub">${escapeHtml(label)}: ${escapeHtml(val)}</div>`).join('');
+      const noteLine = ci.note ? `<div class="sub">Note: ${escapeHtml(ci.note)}</div>` : '';
+      html += `<div class="cart-line" style="align-items:flex-start;">
+        <div>
+          <div class="name">${escapeHtml(ci.name)}</div>
+          ${optLines}
+          ${noteLine}
+          <div class="sub" style="margin-top:4px;">
+            <span class="qty-btn" data-act="lineDec" data-lineid="${ci.lineId}" style="display:inline-flex;width:22px;height:22px;font-size:13px;">−</span>
+            <span class="mono" style="margin:0 8px;">${ci.qty}</span>
+            <span class="qty-btn add" data-act="lineInc" data-lineid="${ci.lineId}" style="display:inline-flex;width:22px;height:22px;font-size:13px;">+</span>
+            <span data-act="lineRemove" data-lineid="${ci.lineId}" style="margin-left:12px;color:var(--diner-red);font-weight:700;cursor:pointer;">Remove</span>
+          </div>
+        </div>
+        <div class="mono">$${ci.price*ci.qty}</div>
       </div>`;
     });
     html += `
@@ -423,6 +583,29 @@ function renderDrawer(showConfirm){
   }
   drawer.innerHTML = html;
 
+  drawer.querySelectorAll('[data-act="lineInc"]').forEach(el=>{
+    el.onclick = ()=>{
+      const ci = cartItems.find(x=>x.lineId===el.dataset.lineid);
+      if(ci){ ci.qty++; renderDrawer(false); renderCustomer(); }
+    };
+  });
+  drawer.querySelectorAll('[data-act="lineDec"]').forEach(el=>{
+    el.onclick = ()=>{
+      const ci = cartItems.find(x=>x.lineId===el.dataset.lineid);
+      if(ci){
+        ci.qty--;
+        if(ci.qty<=0) cartItems = cartItems.filter(x=>x.lineId!==el.dataset.lineid);
+        renderDrawer(false); renderCustomer();
+      }
+    };
+  });
+  drawer.querySelectorAll('[data-act="lineRemove"]').forEach(el=>{
+    el.onclick = ()=>{
+      cartItems = cartItems.filter(x=>x.lineId!==el.dataset.lineid);
+      renderDrawer(false); renderCustomer();
+    };
+  });
+
   const payCheck = document.getElementById('payInStoreConfirm');
   const submitBtn = document.getElementById('submitOrder');
   if(payCheck && submitBtn){
@@ -446,10 +629,9 @@ async function submitOrder(){
   const btn = document.getElementById('submitOrder');
   btn.disabled = true; btn.textContent = 'Sending…';
   const {total} = cartCountTotal();
-  const items = Object.entries(cart).filter(([,q])=>q>0).map(([id,qty])=>{
-    const item = MENU.flatMap(s=>s.items).find(i=>i.id===id);
-    return {name:item.name, qty, price:item.price};
-  });
+  const items = cartItems.map(ci=>({
+    name: ci.name, qty: ci.qty, price: ci.price, note: ci.note || '', options: ci.options || {}
+  }));
   const name = document.getElementById('customerName').value;
   const phone = document.getElementById('customerPhone').value;
   const note = document.getElementById('orderNote').value;
@@ -465,7 +647,6 @@ async function submitOrder(){
     });
     if(!res.ok) throw new Error('order failed');
     const order = await res.json();
-    lastOrderNum = order.num;
     renderDrawer(true);
     startTracking(order.id);
   }catch(e){
@@ -486,11 +667,12 @@ document.getElementById('customerView').addEventListener('click', (e)=>{
     if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
     return;
   }
-  const id = t.dataset.id, act = t.dataset.act;
-  cart[id] = (cart[id]||0) + (act==='inc'?1:-1);
-  if(cart[id]<=0) delete cart[id];
-  renderCustomer();
+  if(t.dataset.act === 'openItem'){
+    openItemModal(t.dataset.id);
+  }
 });
+
+document.getElementById('itemModalBackdrop').onclick = closeItemModal;
 
 document.getElementById('cartFab').onclick = openDrawer;
 document.getElementById('cartBtnTop').onclick = openDrawer;

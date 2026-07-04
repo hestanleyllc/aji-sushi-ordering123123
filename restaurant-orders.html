@@ -100,8 +100,9 @@
   .ticket-loc{font-size:12px;font-weight:700;color:var(--diner-red);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px;}
   .ticket-name{font-size:12px;color:#6b5d38;margin-bottom:8px;}
   .ticket-items{list-style:none;padding:0;margin:0 0 10px;}
-  .ticket-items li{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dotted #cbbd94;}
+  .ticket-items li{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:13px;padding:5px 0;border-bottom:1px dotted #cbbd94;}
   .ticket-items .q{font-family:'Space Mono',monospace;color:#8a7a52;margin-right:6px;}
+  .ticket-items .item-sub{font-size:11px;color:#8a7a52;margin:2px 0 0 20px;}
   .ticket-note{font-size:12px;background:#fff;border:1px dashed #cbbd94;padding:6px 8px;border-radius:6px;margin-bottom:10px;color:#6b5d38;}
   .ticket-total{display:flex;justify-content:space-between;font-size:13px;font-weight:700;margin-bottom:10px;padding-top:4px;border-top:1px solid #cbbd94;}
   .pickup-badge{
@@ -265,9 +266,13 @@ async function renderKitchen(){
     } else {
       groups[col.key].forEach(o=>{
         const isFresh = col.key==='pending' && (Date.now()-o.createdAt < 60000);
-        const itemsHtml = o.items.map(it=>`<li><span><span class="q">×${it.qty}</span>${escapeHtml(it.name)}</span><span>$${it.price*it.qty}</span></li>`).join('');
+        const itemsHtml = o.items.map(it=>{
+          const opts = it.options ? Object.entries(it.options).map(([label,val])=>`<div class="item-sub">${escapeHtml(label)}: ${escapeHtml(val)}</div>`).join('') : '';
+          const itemNote = it.note ? `<div class="item-sub">Note: ${escapeHtml(it.note)}</div>` : '';
+          return `<li><div><span><span class="q">×${it.qty}</span>${escapeHtml(it.name)}</span>${opts}${itemNote}</div><span>$${it.price*it.qty}</span></li>`;
+        }).join('');
         const noteHtml = o.note ? `<div class="ticket-note">Note: ${escapeHtml(o.note)}</div>` : '';
-        const nameHtml = o.name ? `<div class="ticket-name">${escapeHtml(o.name)}</div>` : '';
+        const nameHtml = o.name ? `<div class="ticket-name">${escapeHtml(o.name)}${o.phone ? ' · ' + escapeHtml(o.phone) : ''}</div>` : (o.phone ? `<div class="ticket-name">${escapeHtml(o.phone)}</div>` : '');
 
         let bodyHtml = '';
         if(col.key === 'pending'){
@@ -382,9 +387,9 @@ async function loadSiteInfo(){
 ensureAudioCtx();
 loadSiteInfo();
 renderKitchen();
-setInterval(renderKitchen, 3000);
+setInterval(renderKitchen, 1000);
 setInterval(loadSiteInfo, 20000);
-setInterval(()=>{ if(hasPendingOrders) playLoudAlarm(); }, 1500);
+setInterval(()=>{ if(hasPendingOrders) playLoudAlarm(); }, 1000);
 </script>
 </body>
 </html>

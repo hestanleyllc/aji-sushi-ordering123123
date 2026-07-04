@@ -49,12 +49,32 @@
   }
   .icon-btn.del{background:#5c2b28;color:#ffb4ac;}
   .dish-row{
-    display:grid;grid-template-columns:1.3fr 1.6fr 80px auto auto;gap:8px;align-items:center;
+    display:grid;grid-template-columns:1.3fr 1.6fr 80px auto auto auto;gap:8px;align-items:center;
     background:var(--cream);border-radius:8px;padding:8px;margin-bottom:8px;
   }
   @media(max-width:640px){ .dish-row{grid-template-columns:1fr 1fr;} }
   .dish-row input[type="text"], .dish-row input[type="number"]{
     padding:8px;border-radius:6px;border:1px solid #cbbd94;background:#fff;color:var(--ink);font-size:13px;
+  }
+  .icon-btn.opts{background:#4a4238;color:var(--mustard);}
+  .icon-btn.opts.active{background:var(--mustard);color:var(--ink);}
+  .options-panel{
+    background:#3d3a34;border:1px dashed var(--chrome);border-radius:8px;
+    padding:12px;margin:-2px 0 10px;
+  }
+  .option-group-card{background:var(--cream);border-radius:8px;padding:10px;margin-bottom:10px;color:var(--ink);}
+  .option-group-top{display:flex;gap:8px;margin-bottom:8px;align-items:center;}
+  .option-group-top input[type="text"]{flex:1;padding:7px;border-radius:6px;border:1px solid #cbbd94;font-size:13px;}
+  .option-group-top select{padding:7px;border-radius:6px;border:1px solid #cbbd94;font-size:12px;}
+  .option-group-top input[type="number"]{width:56px;padding:7px;border-radius:6px;border:1px solid #cbbd94;font-size:13px;}
+  .option-group-card textarea{
+    width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid #cbbd94;font-size:13px;
+    font-family:'Inter',sans-serif;
+  }
+  .option-group-card label{font-size:11px;color:#7a6c46;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;}
+  .add-group-btn{
+    width:100%;padding:9px;border-radius:6px;border:1px dashed var(--mustard);background:transparent;
+    color:var(--mustard);font-size:12px;font-weight:700;cursor:pointer;
   }
   .sold-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:#6b5d38;white-space:nowrap;}
   .add-dish-btn{
@@ -115,18 +135,18 @@ const DEFAULT_SEO = {
 };
 const DEFAULT_MENU = [
   {cat:'Griddle & Eggs', items:[
-    {id:'d1', name:'Buttermilk Pancake Stack', desc:'Three tall stack, warm maple syrup', price:11, emoji:'🥞', soldOut:false},
-    {id:'d2', name:'The Main Street Skillet', desc:'Eggs, hash browns, cheddar, peppers', price:13, emoji:'🍳', soldOut:false},
+    {id:'d1', name:'Buttermilk Pancake Stack', desc:'Three tall stack, warm maple syrup', price:11, emoji:'🥞', soldOut:false, optionGroups:[]},
+    {id:'d2', name:'The Main Street Skillet', desc:'Eggs, hash browns, cheddar, peppers', price:13, emoji:'🍳', soldOut:false, optionGroups:[]},
   ]},
   {cat:'From the Grill', items:[
-    {id:'d3', name:'Bacon Cheeseburger', desc:'Half-pound patty, smoked bacon, fries', price:15, emoji:'🍔', soldOut:false},
-    {id:'d4', name:'BBQ Pulled Pork Sandwich', desc:'Slow-smoked, house slaw, brioche bun', price:14, emoji:'🥪', soldOut:false},
-    {id:'d5', name:'Baked Mac & Cheese', desc:'Three-cheese blend, toasted crumb topping', price:12, emoji:'🧀', soldOut:false},
+    {id:'d3', name:'Bacon Cheeseburger', desc:'Half-pound patty, smoked bacon, fries', price:15, emoji:'🍔', soldOut:false, optionGroups:[]},
+    {id:'d4', name:'BBQ Pulled Pork Sandwich', desc:'Slow-smoked, house slaw, brioche bun', price:14, emoji:'🥪', soldOut:false, optionGroups:[]},
+    {id:'d5', name:'Baked Mac & Cheese', desc:'Three-cheese blend, toasted crumb topping', price:12, emoji:'🧀', soldOut:false, optionGroups:[]},
   ]},
   {cat:'Fountain & Sides', items:[
-    {id:'d6', name:'Hand-Spun Milkshake', desc:'Vanilla, chocolate, or strawberry', price:7, emoji:'🥤', soldOut:false},
-    {id:'d7', name:'Sweet Tea', desc:'Southern-style, brewed daily', price:3, emoji:'🧊', soldOut:false},
-    {id:'d8', name:'Slice of Apple Pie', desc:'Warm, with a scoop of vanilla', price:6, emoji:'🥧', soldOut:false},
+    {id:'d6', name:'Hand-Spun Milkshake', desc:'Vanilla, chocolate, or strawberry', price:7, emoji:'🥤', soldOut:false, optionGroups:[]},
+    {id:'d7', name:'Sweet Tea', desc:'Southern-style, brewed daily', price:3, emoji:'🧊', soldOut:false, optionGroups:[]},
+    {id:'d8', name:'Slice of Apple Pie', desc:'Warm, with a scoop of vanilla', price:6, emoji:'🥧', soldOut:false, optionGroups:[]},
   ]},
 ];
 
@@ -135,8 +155,19 @@ function escapeHtml(str){
 }
 
 let state = { siteInfo: {...DEFAULT_SITE, contact:{...DEFAULT_SITE.contact}}, seo: {...DEFAULT_SEO}, menu: JSON.parse(JSON.stringify(DEFAULT_MENU)) };
+let openOptionsFor = {};
 
 function uid(){ return 'd_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
+function gid(){ return 'og_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
+
+function ensureOptionGroups(menu){
+  menu.forEach(sec=>{
+    sec.items.forEach(it=>{
+      if(!Array.isArray(it.optionGroups)) it.optionGroups = [];
+    });
+  });
+  return menu;
+}
 
 async function loadConfig(){
   try{
@@ -145,7 +176,7 @@ async function loadConfig(){
       const cfg = await res.json();
       if(cfg.siteInfo) state.siteInfo = { contact:{phone:'',address:'',hours:''}, ...cfg.siteInfo };
       if(cfg.seo) state.seo = cfg.seo;
-      if(cfg.menu && cfg.menu.length) state.menu = cfg.menu;
+      if(cfg.menu && cfg.menu.length) state.menu = ensureOptionGroups(cfg.menu);
     }
   }catch(e){}
   renderSite();
@@ -192,14 +223,37 @@ function renderMenu(){
         <button class="icon-btn del" data-act="delCat" data-ci="${ci}">Delete Category</button>
       </div>`;
     sec.items.forEach((it, di)=>{
+      const groups = it.optionGroups || [];
+      const isOpen = !!openOptionsFor[it.id];
       html += `
         <div class="dish-row">
           <input type="text" data-ci="${ci}" data-di="${di}" data-field="name" value="${escapeHtml(it.name)}" placeholder="Dish name">
           <input type="text" data-ci="${ci}" data-di="${di}" data-field="desc" value="${escapeHtml(it.desc)}" placeholder="Description">
           <input type="number" data-ci="${ci}" data-di="${di}" data-field="price" value="${it.price}" min="0" step="0.5">
           <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="soldOut" ${it.soldOut?'checked':''}> Sold out</label>
+          <button class="icon-btn opts ${isOpen?'active':''}" data-act="toggleOpts" data-dishid="${it.id}">⚙ Options (${groups.length})</button>
           <button class="icon-btn del" data-act="delDish" data-ci="${ci}" data-di="${di}">Delete</button>
         </div>`;
+      if(isOpen){
+        html += `<div class="options-panel" data-ci="${ci}" data-di="${di}">`;
+        groups.forEach((g, gi)=>{
+          html += `
+            <div class="option-group-card">
+              <div class="option-group-top">
+                <input type="text" class="og-label" data-ci="${ci}" data-di="${di}" data-gi="${gi}" value="${escapeHtml(g.label)}" placeholder="e.g. Choose your side">
+                <select class="og-type" data-ci="${ci}" data-di="${di}" data-gi="${gi}">
+                  <option value="single" ${g.type==='single'?'selected':''}>Pick 1</option>
+                  <option value="multi" ${g.type==='multi'?'selected':''}>Pick exactly N</option>
+                </select>
+                ${g.type==='multi' ? `<input type="number" class="og-count" data-ci="${ci}" data-di="${di}" data-gi="${gi}" value="${g.count||1}" min="1">` : ''}
+                <button class="icon-btn del" data-act="delGroup" data-ci="${ci}" data-di="${di}" data-gi="${gi}">✕</button>
+              </div>
+              <label>Choices (one per line)</label>
+              <textarea class="og-choices" rows="4" data-ci="${ci}" data-di="${di}" data-gi="${gi}" placeholder="Miso Soup&#10;Salad">${escapeHtml((g.choices||[]).join('\n'))}</textarea>
+            </div>`;
+        });
+        html += `<button class="add-group-btn" data-act="addGroup" data-ci="${ci}" data-di="${di}">+ Add Option Group</button></div>`;
+      }
     });
     html += `<button class="add-dish-btn" data-act="addDish" data-ci="${ci}">+ Add Dish to ${sec.cat}</button></div>`;
   });
@@ -232,7 +286,7 @@ function bindMenuEvents(){
   });
   document.querySelectorAll('[data-act="addDish"]').forEach(btn=>{
     btn.onclick = ()=>{
-      state.menu[btn.dataset.ci].items.push({id:uid(), name:'New Dish', desc:'', price:0, soldOut:false});
+      state.menu[btn.dataset.ci].items.push({id:uid(), name:'New Dish', desc:'', price:0, soldOut:false, optionGroups:[]});
       renderMenu();
     };
   });
@@ -241,6 +295,54 @@ function bindMenuEvents(){
       if(state.menu.length<=1){ alert('Keep at least one category.'); return; }
       state.menu.splice(btn.dataset.ci,1);
       renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="toggleOpts"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.dishid;
+      openOptionsFor[id] = !openOptionsFor[id];
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="addGroup"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = btn.dataset.ci, di = btn.dataset.di;
+      const item = state.menu[ci].items[di];
+      if(!Array.isArray(item.optionGroups)) item.optionGroups = [];
+      item.optionGroups.push({ id: gid(), label:'Choose your side', type:'single', count:1, choices:['Miso Soup','Salad'] });
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="delGroup"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = btn.dataset.ci, di = btn.dataset.di, gi = btn.dataset.gi;
+      state.menu[ci].items[di].optionGroups.splice(gi,1);
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('.og-label').forEach(inp=>{
+    inp.oninput = ()=>{
+      const {ci,di,gi} = inp.dataset;
+      state.menu[ci].items[di].optionGroups[gi].label = inp.value;
+    };
+  });
+  document.querySelectorAll('.og-type').forEach(sel=>{
+    sel.onchange = ()=>{
+      const {ci,di,gi} = sel.dataset;
+      state.menu[ci].items[di].optionGroups[gi].type = sel.value;
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('.og-count').forEach(inp=>{
+    inp.oninput = ()=>{
+      const {ci,di,gi} = inp.dataset;
+      state.menu[ci].items[di].optionGroups[gi].count = Math.max(1, Number(inp.value)||1);
+    };
+  });
+  document.querySelectorAll('.og-choices').forEach(ta=>{
+    ta.oninput = ()=>{
+      const {ci,di,gi} = ta.dataset;
+      state.menu[ci].items[di].optionGroups[gi].choices = ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
     };
   });
 }
