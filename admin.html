@@ -89,6 +89,9 @@
   <h2>Site Info</h2>
   <div class="card" id="siteCard"></div>
 
+  <h2>SEO</h2>
+  <div class="card" id="seoCard"></div>
+
   <h2>Menu</h2>
   <div id="menuList"></div>
   <button class="add-cat-btn" id="addCatBtn">+ Add Category</button>
@@ -103,7 +106,12 @@
 const DEFAULT_SITE = {
   name: 'MAPLE & MAIN',
   tagline: 'Est. on Main Street',
-  payNote: 'No online payment — please pay at the counter or with your server.'
+  payNote: 'No online payment — please pay at the counter or with your server.',
+  contact: { phone: '', address: '', hours: '' }
+};
+const DEFAULT_SEO = {
+  title: 'Maple & Main · Order Online',
+  description: 'Order online for pickup at Maple & Main.'
 };
 const DEFAULT_MENU = [
   {cat:'Griddle & Eggs', items:[
@@ -126,7 +134,7 @@ function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-let state = { siteInfo: {...DEFAULT_SITE}, menu: JSON.parse(JSON.stringify(DEFAULT_MENU)) };
+let state = { siteInfo: {...DEFAULT_SITE, contact:{...DEFAULT_SITE.contact}}, seo: {...DEFAULT_SEO}, menu: JSON.parse(JSON.stringify(DEFAULT_MENU)) };
 
 function uid(){ return 'd_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
 
@@ -135,24 +143,43 @@ async function loadConfig(){
     const res = await fetch('/api/config');
     if(res.ok){
       const cfg = await res.json();
-      if(cfg.siteInfo) state.siteInfo = cfg.siteInfo;
+      if(cfg.siteInfo) state.siteInfo = { contact:{phone:'',address:'',hours:''}, ...cfg.siteInfo };
+      if(cfg.seo) state.seo = cfg.seo;
       if(cfg.menu && cfg.menu.length) state.menu = cfg.menu;
     }
   }catch(e){}
   renderSite();
+  renderSeo();
   renderMenu();
 }
 
 function renderSite(){
   const el = document.getElementById('siteCard');
+  const contact = state.siteInfo.contact || {phone:'',address:'',hours:''};
   el.innerHTML = `
     <div class="field"><label>Restaurant Name</label><input id="siteName" value="${escapeHtml(state.siteInfo.name)}"></div>
     <div class="field"><label>Tagline</label><input id="siteTagline" value="${escapeHtml(state.siteInfo.tagline)}"></div>
     <div class="field"><label>Payment Note (shown to customers)</label><textarea id="sitePayNote" rows="2">${escapeHtml(state.siteInfo.payNote)}</textarea></div>
+    <div class="field"><label>Contact Phone</label><input id="contactPhone" value="${escapeHtml(contact.phone)}" placeholder="(555) 123-4567"></div>
+    <div class="field"><label>Contact Address</label><input id="contactAddress" value="${escapeHtml(contact.address)}" placeholder="123 Main St, Anytown"></div>
+    <div class="field"><label>Hours</label><input id="contactHours" value="${escapeHtml(contact.hours)}" placeholder="Mon–Sat 9am–9pm"></div>
   `;
   document.getElementById('siteName').oninput = (e)=>{ state.siteInfo.name = e.target.value; };
   document.getElementById('siteTagline').oninput = (e)=>{ state.siteInfo.tagline = e.target.value; };
   document.getElementById('sitePayNote').oninput = (e)=>{ state.siteInfo.payNote = e.target.value; };
+  document.getElementById('contactPhone').oninput = (e)=>{ state.siteInfo.contact.phone = e.target.value; };
+  document.getElementById('contactAddress').oninput = (e)=>{ state.siteInfo.contact.address = e.target.value; };
+  document.getElementById('contactHours').oninput = (e)=>{ state.siteInfo.contact.hours = e.target.value; };
+}
+
+function renderSeo(){
+  const el = document.getElementById('seoCard');
+  el.innerHTML = `
+    <div class="field"><label>Page Title (shows in browser tab &amp; Google results)</label><input id="seoTitle" value="${escapeHtml(state.seo.title)}"></div>
+    <div class="field"><label>Meta Description (shows under the title in Google results)</label><textarea id="seoDesc" rows="2">${escapeHtml(state.seo.description)}</textarea></div>
+  `;
+  document.getElementById('seoTitle').oninput = (e)=>{ state.seo.title = e.target.value; };
+  document.getElementById('seoDesc').oninput = (e)=>{ state.seo.description = e.target.value; };
 }
 
 function renderMenu(){

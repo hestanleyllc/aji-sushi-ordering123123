@@ -24,8 +24,33 @@ function requireAdminAuth(req, res, next){
 }
 
 // ---- Pages (all html files live in the same folder as server.js — no subfolder needed) ----
+function escapeAttr(str){
+  return String(str || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function injectSeo(html, seo){
+  if(!seo) return html;
+  let out = html;
+  if(seo.title){
+    out = out.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeAttr(seo.title)}</title>`);
+  }
+  if(seo.description){
+    if(/<meta name="description"[^>]*>/.test(out)){
+      out = out.replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeAttr(seo.description)}">`);
+    } else {
+      out = out.replace('</head>', `  <meta name="description" content="${escapeAttr(seo.description)}">\n</head>`);
+    }
+  }
+  return out;
+}
+
 app.get('/', (req, res) => res.redirect('/customer-order.html'));
-app.get('/customer-order.html', (req, res) => res.sendFile(path.join(__dirname, 'customer-order.html')));
+app.get('/customer-order.html', (req, res) => {
+  fs.readFile(path.join(__dirname, 'customer-order.html'), 'utf8', (err, html) => {
+    if(err) return res.status(500).send('Error loading page');
+    res.set('Content-Type', 'text/html');
+    res.send(injectSeo(html, data.config.seo));
+  });
+});
 app.get('/restaurant-orders.html', (req, res) => res.sendFile(path.join(__dirname, 'restaurant-orders.html')));
 app.get('/admin.html', requireAdminAuth, (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 
@@ -35,7 +60,12 @@ const DEFAULT_CONFIG = {
   siteInfo: {
     name: 'MAPLE & MAIN',
     tagline: 'Est. on Main Street',
-    payNote: 'No online payment — please pay at the counter or with your server.'
+    payNote: 'No online payment — please pay at the counter or with your server.',
+    contact: { phone: '', address: '', hours: '' }
+  },
+  seo: {
+    title: 'Maple & Main · Order Online',
+    description: 'Order online for pickup at Maple & Main.'
   },
   menu: [
     {cat:'Griddle & Eggs', items:[
@@ -118,6 +148,7 @@ app.post('/api/orders', (req, res) => {
     total: body.total || 0,
     note: body.note || '',
     name: body.name || '',
+    phone: body.phone || '',
     location: body.location || 'Pickup',
     status: 'pending',
     pickupTime: null,
