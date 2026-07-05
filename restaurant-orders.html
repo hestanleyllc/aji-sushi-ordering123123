@@ -212,7 +212,7 @@ function playLoudAlarm(){
     }
     audio.volume = 1;
     if(muteTimer) clearTimeout(muteTimer);
-    muteTimer = setTimeout(()=>{ audio.volume = 0; }, 4000);
+    muteTimer = setTimeout(()=>{ audio.volume = 0; }, 1500);
   }
   if(navigator.vibrate){ navigator.vibrate([300,100,300,100,300]); }
 }
@@ -272,6 +272,11 @@ async function renderKitchen(){
     else groups.confirmed.push(o);
   });
   hasPendingOrders = groups.pending.length > 0;
+  if(!hasPendingOrders){
+    const audio = document.getElementById('alarmAudio');
+    if(audio) audio.volume = 0;
+    if(muteTimer){ clearTimeout(muteTimer); muteTimer = null; }
+  }
 
   const colDefs = [
     {key:'pending', label:'New — Needs Time', empty:'No new orders', rot:'r1'},
