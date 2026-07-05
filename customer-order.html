@@ -2177,7 +2177,7 @@ function addModalItemToCart(){
   cartItems.push({
     lineId: 'ci_'+Date.now()+'_'+Math.floor(Math.random()*10000),
     dishId: dish.id, name: dish.name, price: dish.price, category: modalCategory,
-    qty: modalQty, note: modalNote, options
+    qty: modalQty, note: modalNote, options, printRouting: dish.printRouting || []
   });
   closeItemModal();
   renderCustomer();
@@ -2383,7 +2383,7 @@ function closeDrawer(){
 function buildOrderPayload(){
   const {subtotal,tax,total} = cartCountTotal();
   const items = cartItems.map(ci=>({
-    name: ci.name, qty: ci.qty, price: ci.price, note: ci.note || '', options: ci.options || {}, category: ci.category || ''
+    name: ci.name, qty: ci.qty, price: ci.price, note: ci.note || '', options: ci.options || {}, category: ci.category || '', printRouting: ci.printRouting || []
   }));
   const name = document.getElementById('customerName').value;
   const phone = document.getElementById('customerPhone').value;

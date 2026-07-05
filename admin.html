@@ -49,7 +49,7 @@
   }
   .icon-btn.del{background:#5c2b28;color:#ffb4ac;}
   .dish-row{
-    display:grid;grid-template-columns:auto 1.3fr 1.6fr 80px auto auto auto auto;gap:8px;align-items:center;
+    display:grid;grid-template-columns:auto 1.3fr 1.6fr 80px auto auto auto auto auto;gap:8px;align-items:center;
     background:var(--cream);border-radius:8px;padding:8px;margin-bottom:8px;
   }
   @media(max-width:640px){ .dish-row{grid-template-columns:1fr 1fr;} }
@@ -126,6 +126,9 @@
 
   <h2>Ordering Hours</h2>
   <div class="card" id="hoursCard"></div>
+
+  <h2>Printer Stations</h2>
+  <div class="card" id="stationsCard"></div>
 
   <h2>Menu</h2>
   <button class="add-cat-btn" id="loadFullMenuBtn" style="border-color:var(--diner-red);color:var(--diner-red);margin-bottom:12px;">⚠️ Load Full Menu (174 items) — replaces everything below</button>
@@ -1724,17 +1727,20 @@ function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-let state = { siteInfo: {...DEFAULT_SITE, contact:{...DEFAULT_SITE.contact}}, seo: {...DEFAULT_SEO}, menu: JSON.parse(JSON.stringify(DEFAULT_MENU)) };
+let state = { siteInfo: {...DEFAULT_SITE, contact:{...DEFAULT_SITE.contact}}, seo: {...DEFAULT_SEO}, menu: JSON.parse(JSON.stringify(DEFAULT_MENU)), printStations: [] };
 let openOptionsFor = {};
+let openRoutingFor = {};
 
 function uid(){ return 'd_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
 function gid(){ return 'og_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
+function sid(){ return 'st_' + Date.now() + '_' + Math.floor(Math.random()*10000); }
 
 function ensureOptionGroups(menu){
   menu.forEach(sec=>{
     if(!sec.orderWindow) sec.orderWindow = { enabled:false, start:'11:00', end:'15:00' };
     sec.items.forEach(it=>{
       if(!Array.isArray(it.optionGroups)) it.optionGroups = [];
+      if(!Array.isArray(it.printRouting)) it.printRouting = [];
     });
   });
   return menu;
@@ -1760,11 +1766,13 @@ async function loadConfig(){
       }
       if(cfg.seo) state.seo = cfg.seo;
       if(cfg.menu && cfg.menu.length) state.menu = ensureOptionGroups(cfg.menu);
+      if(Array.isArray(cfg.printStations)) state.printStations = cfg.printStations;
     }
   }catch(e){}
   renderSite();
   renderSeo();
   renderHours();
+  renderStations();
   renderMenu();
 }
 
@@ -1843,6 +1851,37 @@ function renderHours(){
   });
 }
 
+function renderStations(){
+  const el = document.getElementById('stationsCard');
+  const stations = state.printStations || [];
+  el.innerHTML = `
+    <div style="font-size:11px;color:#7a6c46;margin-bottom:10px;">
+      Set up one printer per kitchen station (e.g. "Kitchen", "Sushi Bar"). Get each Printer ID from your PrintNode dashboard.
+      Dishes without any print routing rule below will keep printing to your default printer (PRINTNODE_PRINTER_ID) as before.
+    </div>
+    ${stations.map((st,si)=>`
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <input type="text" class="station-name" data-si="${si}" value="${escapeHtml(st.name)}" placeholder="Station name (e.g. Kitchen)" style="flex:1;min-width:140px;padding:8px;border-radius:6px;border:1px solid #cbbd94;">
+        <input type="text" class="station-printerid" data-si="${si}" value="${escapeHtml(st.printerId||'')}" placeholder="PrintNode Printer ID" style="flex:1;min-width:140px;padding:8px;border-radius:6px;border:1px solid #cbbd94;">
+        <button class="icon-btn del" data-act="delStation" data-si="${si}">Delete</button>
+      </div>`).join('')}
+    <button class="add-dish-btn" id="addStationBtn">+ Add Printer Station</button>
+  `;
+  el.querySelectorAll('.station-name').forEach(inp=>{
+    inp.oninput = ()=>{ state.printStations[inp.dataset.si].name = inp.value; };
+  });
+  el.querySelectorAll('.station-printerid').forEach(inp=>{
+    inp.oninput = ()=>{ state.printStations[inp.dataset.si].printerId = inp.value; };
+  });
+  el.querySelectorAll('[data-act="delStation"]').forEach(btn=>{
+    btn.onclick = ()=>{ state.printStations.splice(btn.dataset.si,1); renderStations(); renderMenu(); };
+  });
+  document.getElementById('addStationBtn').onclick = ()=>{
+    state.printStations.push({ id: sid(), name:'New Station', printerId:'' });
+    renderStations();
+  };
+}
+
 function renderMenu(){
   const el = document.getElementById('menuList');
   let html = '';
@@ -1867,7 +1906,9 @@ function renderMenu(){
       </div>`;
     sec.items.forEach((it, di)=>{
       const groups = it.optionGroups || [];
+      const routing = it.printRouting || [];
       const isOpen = !!openOptionsFor[it.id];
+      const isRoutingOpen = !!openRoutingFor[it.id];
       html += `
         <div class="dish-row">
           <div class="move-btns">
@@ -1880,8 +1921,27 @@ function renderMenu(){
           <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="soldOut" ${it.soldOut?'checked':''}> Sold out</label>
           <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="hot" ${it.hot?'checked':''}> 🔥 Hot Seller</label>
           <button class="icon-btn opts ${isOpen?'active':''}" data-act="toggleOpts" data-dishid="${it.id}">⚙ Options (${groups.length})</button>
+          <button class="icon-btn opts ${isRoutingOpen?'active':''}" data-act="toggleRouting" data-dishid="${it.id}">🖨 Print (${routing.length})</button>
           <button class="icon-btn del" data-act="delDish" data-ci="${ci}" data-di="${di}">Delete</button>
         </div>`;
+      if(isRoutingOpen){
+        html += `<div class="options-panel" data-ci="${ci}" data-di="${di}">
+          <div style="font-size:11px;color:var(--cream);margin-bottom:8px;">
+            Leave empty = prints on your default printer only, using the dish name. Add a rule per station to split this dish across stations with custom text (e.g. Kitchen: "Fried Shrimp x2", Sushi Bar: "Shrimp Tempura Roll").
+          </div>`;
+        routing.forEach((r, ri)=>{
+          html += `
+            <div class="option-group-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              ${(state.printStations||[]).length ? `
+              <select class="route-station" data-ci="${ci}" data-di="${di}" data-ri="${ri}" style="padding:7px;border-radius:6px;border:1px solid #cbbd94;">
+                ${(state.printStations||[]).map(st=>`<option value="${escapeHtml(st.name)}" ${r.station===st.name?'selected':''}>${escapeHtml(st.name)}</option>`).join('')}
+              </select>` : `<span style="font-size:12px;color:#a94442;">Add a Printer Station above first ↑</span>`}
+              <input type="text" class="route-label" data-ci="${ci}" data-di="${di}" data-ri="${ri}" value="${escapeHtml(r.label||'')}" placeholder="Text to print (blank = dish name)" style="flex:1;min-width:160px;padding:7px;border-radius:6px;border:1px solid #cbbd94;">
+              <button class="icon-btn del" data-act="delRoute" data-ci="${ci}" data-di="${di}" data-ri="${ri}">✕</button>
+            </div>`;
+        });
+        html += `<button class="add-group-btn" data-act="addRoute" data-ci="${ci}" data-di="${di}">+ Add Print Rule</button></div>`;
+      }
       if(isOpen){
         html += `<div class="options-panel" data-ci="${ci}" data-di="${di}">`;
         groups.forEach((g, gi)=>{
@@ -1982,7 +2042,7 @@ function bindMenuEvents(){
   });
   document.querySelectorAll('[data-act="addDish"]').forEach(btn=>{
     btn.onclick = ()=>{
-      state.menu[btn.dataset.ci].items.push({id:uid(), name:'New Dish', desc:'', price:0, soldOut:false, hot:false, optionGroups:[]});
+      state.menu[btn.dataset.ci].items.push({id:uid(), name:'New Dish', desc:'', price:0, soldOut:false, hot:false, optionGroups:[], printRouting:[]});
       renderMenu();
     };
   });
@@ -1998,6 +2058,42 @@ function bindMenuEvents(){
       const id = btn.dataset.dishid;
       openOptionsFor[id] = !openOptionsFor[id];
       renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="toggleRouting"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.dishid;
+      openRoutingFor[id] = !openRoutingFor[id];
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="addRoute"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = btn.dataset.ci, di = btn.dataset.di;
+      const item = state.menu[ci].items[di];
+      if(!Array.isArray(item.printRouting)) item.printRouting = [];
+      const defaultStation = (state.printStations||[])[0];
+      item.printRouting.push({ station: defaultStation ? defaultStation.name : '', label: '' });
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('[data-act="delRoute"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const ci = btn.dataset.ci, di = btn.dataset.di, ri = btn.dataset.ri;
+      state.menu[ci].items[di].printRouting.splice(ri,1);
+      renderMenu();
+    };
+  });
+  document.querySelectorAll('.route-station').forEach(sel=>{
+    sel.onchange = ()=>{
+      const {ci,di,ri} = sel.dataset;
+      state.menu[ci].items[di].printRouting[ri].station = sel.value;
+    };
+  });
+  document.querySelectorAll('.route-label').forEach(inp=>{
+    inp.oninput = ()=>{
+      const {ci,di,ri} = inp.dataset;
+      state.menu[ci].items[di].printRouting[ri].label = inp.value;
     };
   });
   document.querySelectorAll('[data-act="addGroup"]').forEach(btn=>{
