@@ -49,7 +49,7 @@
   }
   .icon-btn.del{background:#5c2b28;color:#ffb4ac;}
   .dish-row{
-    display:grid;grid-template-columns:auto 1.3fr 1.6fr 80px auto auto auto;gap:8px;align-items:center;
+    display:grid;grid-template-columns:auto 1.3fr 1.6fr 80px auto auto auto auto;gap:8px;align-items:center;
     background:var(--cream);border-radius:8px;padding:8px;margin-bottom:8px;
   }
   @media(max-width:640px){ .dish-row{grid-template-columns:1fr 1fr;} }
@@ -128,6 +128,7 @@
   <div class="card" id="hoursCard"></div>
 
   <h2>Menu</h2>
+  <button class="add-cat-btn" id="loadFullMenuBtn" style="border-color:var(--diner-red);color:var(--diner-red);margin-bottom:12px;">⚠️ Load Full Menu (174 items) — replaces everything below</button>
   <div id="menuList"></div>
   <button class="add-cat-btn" id="addCatBtn">+ Add Category</button>
 </div>
@@ -145,6 +146,7 @@ const DEFAULT_SITE = {
   contact: { phone: '', address: '1620 NY-22, Brewster, NY 10509', hours: '' },
   notifyEmail: '',
   taxRate: 8.375,
+  deliveryEnabled: false,
   orderingHours: {
     timezone: 'America/New_York',
     schedule: {
@@ -1778,6 +1780,11 @@ function renderSite(){
     <div class="field"><label>Hours</label><input id="contactHours" value="${escapeHtml(contact.hours)}" placeholder="Mon–Sat 9am–9pm"></div>
     <div class="field"><label>Order Notification Email</label><input id="notifyEmail" type="email" value="${escapeHtml(state.siteInfo.notifyEmail||'')}" placeholder="you@example.com"></div>
     <div class="field"><label>Sales Tax Rate (%)</label><input id="taxRate" type="number" step="0.001" value="${state.siteInfo.taxRate!=null?state.siteInfo.taxRate:8.375}"></div>
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;">
+        <input type="checkbox" id="deliveryEnabled" style="width:auto;flex:none;" ${state.siteInfo.deliveryEnabled?'checked':''}> Offer delivery (adds a Delivery option next to Pickup)
+      </label>
+    </div>
   `;
   document.getElementById('siteName').oninput = (e)=>{ state.siteInfo.name = e.target.value; };
   document.getElementById('siteTagline').oninput = (e)=>{ state.siteInfo.tagline = e.target.value; };
@@ -1787,6 +1794,7 @@ function renderSite(){
   document.getElementById('contactHours').oninput = (e)=>{ state.siteInfo.contact.hours = e.target.value; };
   document.getElementById('notifyEmail').oninput = (e)=>{ state.siteInfo.notifyEmail = e.target.value; };
   document.getElementById('taxRate').oninput = (e)=>{ state.siteInfo.taxRate = Number(e.target.value)||0; };
+  document.getElementById('deliveryEnabled').onchange = (e)=>{ state.siteInfo.deliveryEnabled = e.target.checked; };
 }
 
 function renderSeo(){
@@ -1870,6 +1878,7 @@ function renderMenu(){
           <input type="text" data-ci="${ci}" data-di="${di}" data-field="desc" value="${escapeHtml(it.desc)}" placeholder="Description">
           <input type="number" data-ci="${ci}" data-di="${di}" data-field="price" value="${it.price}" min="0" step="0.5">
           <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="soldOut" ${it.soldOut?'checked':''}> Sold out</label>
+          <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="hot" ${it.hot?'checked':''}> 🔥 Hot Seller</label>
           <button class="icon-btn opts ${isOpen?'active':''}" data-act="toggleOpts" data-dishid="${it.id}">⚙ Options (${groups.length})</button>
           <button class="icon-btn del" data-act="delDish" data-ci="${ci}" data-di="${di}">Delete</button>
         </div>`;
@@ -1927,8 +1936,8 @@ function bindMenuEvents(){
   });
   document.querySelectorAll('.dish-row input[type="checkbox"]').forEach(inp=>{
     inp.onchange = ()=>{
-      const ci = inp.dataset.ci, di = inp.dataset.di;
-      state.menu[ci].items[di].soldOut = inp.checked;
+      const ci = inp.dataset.ci, di = inp.dataset.di, field = inp.dataset.field;
+      state.menu[ci].items[di][field] = inp.checked;
     };
   });
   document.querySelectorAll('[data-act="delDish"]').forEach(btn=>{
@@ -1973,7 +1982,7 @@ function bindMenuEvents(){
   });
   document.querySelectorAll('[data-act="addDish"]').forEach(btn=>{
     btn.onclick = ()=>{
-      state.menu[btn.dataset.ci].items.push({id:uid(), name:'New Dish', desc:'', price:0, soldOut:false, optionGroups:[]});
+      state.menu[btn.dataset.ci].items.push({id:uid(), name:'New Dish', desc:'', price:0, soldOut:false, hot:false, optionGroups:[]});
       renderMenu();
     };
   });
@@ -2034,6 +2043,12 @@ function bindMenuEvents(){
   });
 }
 
+document.getElementById('loadFullMenuBtn').onclick = ()=>{
+  if(!confirm('This will REPLACE your entire current menu with the full 174-item default menu. This cannot be undone once you click Save Changes. Continue?')) return;
+  state.menu = ensureOptionGroups(JSON.parse(JSON.stringify(DEFAULT_MENU)));
+  renderMenu();
+  alert('Full menu loaded. Review it below, then click "Save Changes" at the bottom to make it live.');
+};
 document.getElementById('addCatBtn').onclick = ()=>{
   state.menu.push({cat:'New Category', items:[], orderWindow:{enabled:false, start:'11:00', end:'15:00'}});
   renderMenu();
