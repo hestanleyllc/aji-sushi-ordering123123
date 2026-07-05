@@ -328,13 +328,13 @@ async function renderKitchen(){
             <div class="ticket-num">#${o.num}</div>
             <div class="ticket-time">${timeAgo(o.createdAt)}</div>
           </div>
-          <div class="ticket-loc">${escapeHtml(o.location)}</div>
+          <div class="ticket-loc">${escapeHtml(o.location)}${o.deliveryAddress ? ` — ${escapeHtml(o.deliveryAddress)}` : ''}</div>
           ${nameHtml}
           <ul class="ticket-items">${itemsHtml}</ul>
           ${noteHtml}
           ${o.subtotal!=null ? `<div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;"><span>Subtotal</span><span>$${Number(o.subtotal).toFixed(2)}</span></div>
           <div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;margin-bottom:2px;"><span>Tax</span><span>$${Number(o.tax||0).toFixed(2)}</span></div>` : ''}
-          <div class="ticket-total"><span>Total (pay in store)</span><span>$${Number(o.total).toFixed(2)}</span></div>
+          <div class="ticket-total"><span>Total ${o.paid ? '· PAID ONLINE ✅' : '(pay in store)'}</span><span>$${Number(o.total).toFixed(2)}</span></div>
           ${bodyHtml}
         </div>`;
       });

@@ -24,7 +24,7 @@ function sendNewOrderEmail(order){
     const note = it.note ? `\n    Note: ${it.note}` : '';
     return `  x${it.qty} ${it.name} ($${it.price})\n${opts}${note}`;
   }).join('\n');
-  const text = `New order #${order.num}\n\n${itemLines}\n\nSubtotal: $${Number(order.subtotal||order.total).toFixed(2)}\nTax: $${Number(order.tax||0).toFixed(2)}\nTotal: $${Number(order.total).toFixed(2)}\nCustomer: ${order.name || '—'}\nPhone: ${order.phone || '—'}\nType: ${order.location}\n${order.note ? 'Order note: '+order.note : ''}`;
+  const text = `New order #${order.num}\n\n${itemLines}\n\nSubtotal: $${Number(order.subtotal||order.total).toFixed(2)}\nTax: $${Number(order.tax||0).toFixed(2)}\nTotal: $${Number(order.total).toFixed(2)}\nPayment: ${order.paid ? 'PAID ONLINE' : 'Pay in store'}\nCustomer: ${order.name || '—'}\nPhone: ${order.phone || '—'}\nType: ${order.location}${order.deliveryAddress ? ' — '+order.deliveryAddress : ''}\n${order.note ? 'Order note: '+order.note : ''}`;
   mailTransporter.sendMail({
     from: process.env.EMAIL_USER,
     to,
@@ -43,7 +43,7 @@ if(!PRINTNODE_API_KEY || !PRINTNODE_PRINTER_ID){
 function buildReceiptText(order){
   const name = (data.config.siteInfo && data.config.siteInfo.name) || 'ORDER';
   const line = '--------------------------------';
-  const lines = [name, line, `Order #${order.num}`, `Type: ${order.location}`];
+  const lines = [name, line, `Order #${order.num}`, `Type: ${order.location}${order.deliveryAddress ? ' — '+order.deliveryAddress : ''}`];
   if(order.name) lines.push(`Name: ${order.name}`);
   if(order.phone) lines.push(`Phone: ${order.phone}`);
   lines.push(line);
@@ -66,6 +66,7 @@ function buildReceiptText(order){
   lines.push(`Subtotal: $${Number(order.subtotal||order.total).toFixed(2)}`);
   lines.push(`Tax: $${Number(order.tax||0).toFixed(2)}`);
   lines.push(`Total: $${Number(order.total).toFixed(2)}`);
+  lines.push(`Payment: ${order.paid ? 'PAID ONLINE' : 'Pay in store'}`);
   if(order.note) lines.push(`Order note: ${order.note}`);
   lines.push('');
   lines.push(new Date(order.createdAt).toLocaleString('en-US'));
@@ -169,6 +170,7 @@ const DEFAULT_CONFIG = {
     contact: { phone: '', address: '1620 NY-22, Brewster, NY 10509', hours: '' },
     notifyEmail: '',
     taxRate: 8.375,
+    deliveryEnabled: false,
     orderingHours: {
       timezone: 'America/New_York',
       schedule: {
@@ -269,6 +271,7 @@ app.get('/api/config', (req, res) => {
   // Public endpoint (the ordering page needs it) — strip anything staff-only before sending.
   const publicConfig = JSON.parse(JSON.stringify(data.config));
   if(publicConfig.siteInfo) delete publicConfig.siteInfo.notifyEmail;
+  if(publicConfig.siteInfo) publicConfig.siteInfo.onlinePaymentEnabled = !!stripe;
   res.json(publicConfig);
 });
 
@@ -404,25 +407,28 @@ app.get('/api/store-status', (req, res) => {
   res.json(getStoreStatus());
 });
 
-app.post('/api/orders', (req, res) => {
+function validateOrderPayload(body){
+  if(!Array.isArray(body.items) || body.items.length === 0){
+    return { error: 'Order must include at least one item' };
+  }
   const status = getStoreStatus();
   if(!status.open){
-    return res.status(403).json({ error: 'closed', message: 'Sorry, online ordering is currently closed. Please check our hours.' });
-  }
-  const body = req.body || {};
-  if(!Array.isArray(body.items) || body.items.length === 0){
-    return res.status(400).json({ error: 'Order must include at least one item' });
+    return { error: 'Sorry, online ordering is currently closed. Please check our hours.', code: 'closed' };
   }
   for(const it of body.items){
     if(it.category && !isCategoryOpenNow(it.category)){
       const cat = (data.config.menu || []).find(c => c.cat === it.category);
       const w = cat && cat.orderWindow;
-      return res.status(403).json({
-        error: 'category_closed',
-        message: `Sorry, "${it.category}" can only be ordered ${w ? `between ${w.start} and ${w.end}` : 'during its available hours'}.`
-      });
+      return {
+        error: `Sorry, "${it.category}" can only be ordered ${w ? `between ${w.start} and ${w.end}` : 'during its available hours'}.`,
+        code: 'category_closed'
+      };
     }
   }
+  return null;
+}
+
+function createOrder(body, extra){
   const order = {
     id: 'o_' + Date.now() + '_' + Math.floor(Math.random() * 100000),
     num: nextOrderNumber(),
@@ -434,16 +440,98 @@ app.post('/api/orders', (req, res) => {
     name: body.name || '',
     phone: body.phone || '',
     location: body.location || 'Pickup',
+    deliveryAddress: body.deliveryAddress || '',
     status: 'pending',
     pickupTime: null,
     createdAt: Date.now(),
+    paid: !!(extra && extra.paid),
+    paymentMethod: (extra && extra.paymentMethod) || 'in_store',
   };
   data.orders.push(order);
   saveData();
   broadcast('new-order', { order });
   sendNewOrderEmail(order);
   printOrderTicket(order);
+  return order;
+}
+
+app.post('/api/orders', (req, res) => {
+  const body = req.body || {};
+  const err = validateOrderPayload(body);
+  if(err){
+    return res.status(err.code === 'closed' || err.code === 'category_closed' ? 403 : 400).json({ error: err.code || 'invalid', message: err.error });
+  }
+  const order = createOrder(body, { paid: false, paymentMethod: 'in_store' });
   res.json(order);
+});
+
+// ---- Online payment (Stripe) ----
+const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+if(!stripe){
+  console.log('Online payment disabled — set STRIPE_SECRET_KEY to enable it.');
+}
+const pendingCheckouts = new Map(); // checkoutId -> cart payload, cleared once paid or abandoned
+
+app.post('/api/checkout', async (req, res) => {
+  if(!stripe) return res.status(400).json({ error: 'Online payment is not enabled.' });
+  const body = req.body || {};
+  const err = validateOrderPayload(body);
+  if(err){
+    return res.status(err.code === 'closed' || err.code === 'category_closed' ? 403 : 400).json({ error: err.code || 'invalid', message: err.error });
+  }
+  const checkoutId = 'chk_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+  pendingCheckouts.set(checkoutId, body);
+  setTimeout(() => pendingCheckouts.delete(checkoutId), 30 * 60 * 1000); // expire abandoned checkouts after 30 min
+
+  try{
+    const line_items = body.items.map(it => ({
+      price_data: {
+        currency: 'usd',
+        product_data: { name: it.name },
+        unit_amount: Math.round(it.price * 100),
+      },
+      quantity: it.qty,
+    }));
+    if(body.tax){
+      line_items.push({
+        price_data: { currency: 'usd', product_data: { name: 'Sales Tax' }, unit_amount: Math.round(body.tax * 100) },
+        quantity: 1,
+      });
+    }
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items,
+      client_reference_id: checkoutId,
+      success_url: `${baseUrl}/customer-order.html?checkout_id=${checkoutId}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/customer-order.html?payment_cancelled=1`,
+    });
+    res.json({ url: session.url });
+  }catch(e){
+    console.error('Stripe checkout session creation failed', e);
+    pendingCheckouts.delete(checkoutId);
+    res.status(500).json({ error: 'Could not start checkout. Please try again.' });
+  }
+});
+
+app.get('/api/checkout/verify', async (req, res) => {
+  if(!stripe) return res.status(400).json({ error: 'Online payment is not enabled.' });
+  const { checkout_id, session_id } = req.query;
+  if(!checkout_id || !session_id) return res.status(400).json({ error: 'Missing checkout_id or session_id' });
+  const pending = pendingCheckouts.get(checkout_id);
+  if(!pending) return res.status(404).json({ error: 'This checkout has already been processed or has expired.' });
+  try{
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if(session.client_reference_id !== checkout_id || session.payment_status !== 'paid'){
+      return res.status(402).json({ error: 'Payment not confirmed yet.' });
+    }
+    pendingCheckouts.delete(checkout_id);
+    const order = createOrder(pending, { paid: true, paymentMethod: 'online' });
+    res.json({ ok: true, order });
+  }catch(e){
+    console.error('Stripe verify failed', e);
+    res.status(500).json({ error: 'Could not verify payment.' });
+  }
 });
 
 app.patch('/api/orders/:id', requireAdminAuth, (req, res) => {

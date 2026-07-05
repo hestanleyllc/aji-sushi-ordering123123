@@ -9,17 +9,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --steel:#2B2B2E;
-    --steel-line:#3E3E42;
+    --steel:#FFFFFF;
+    --steel-line:#E3DCC8;
     --chrome:#B9C1C7;
     --cream:#FAF3E4;
     --cream-dark:#EFE4CB;
-    --ink:#1C1B19;
+    --ink:#171717;
     --diner-red:#C8102E;
     --mustard:#F2A93B;
+    --pink:#FF3D7F;
+    --orange:#FF7A1A;
     --grill-green:#3F7A55;
-    --muted:#8E8B84;
-    --page-bg:#F6F1E6;
+    --muted:#6B655C;
+    --page-bg:#FFFFFF;
   }
   html{background:var(--page-bg);}
   *{box-sizing:border-box;}
@@ -51,26 +53,26 @@
     padding:16px 20px;border-bottom:1px solid var(--steel-line);
     position:sticky;top:0;background:var(--steel);z-index:20;
   }
-  .brand-center{text-align:center;line-height:1;color:#fff;}
-  .brand-center strong{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.5px;color:#fff;}
+  .brand-center{text-align:center;line-height:1;color:var(--ink);}
+  .brand-center strong{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.5px;color:var(--ink);}
   .cart-btn{
     justify-self:end;
-    display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--cream);
+    display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink);
     border:1px solid var(--steel-line);background:var(--steel-line);
     padding:8px 14px;border-radius:20px;cursor:pointer;
   }
   .cart-btn .cart-btn-count{
-    background:var(--diner-red);color:#fff;min-width:18px;height:18px;border-radius:50%;
+    background:var(--pink);color:#fff;min-width:18px;height:18px;border-radius:50%;
     font-size:11px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;
   }
   .nav-menu-wrap{position:relative;justify-self:start;}
   .nav-menu-btn{
     width:38px;height:38px;border-radius:8px;border:1px solid var(--steel-line);
-    background:var(--steel-line);color:var(--cream);font-size:16px;cursor:pointer;
+    background:var(--steel-line);color:var(--ink);font-size:16px;cursor:pointer;
   }
   .nav-dropdown{
     display:none;position:absolute;top:46px;left:0;background:var(--cream);color:var(--ink);
-    border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,0.4);min-width:170px;max-height:70vh;overflow-y:auto;z-index:50;
+    border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,0.25);min-width:170px;max-height:70vh;overflow-y:auto;z-index:50;
   }
   .nav-dropdown.align-right{left:auto;right:0;}
   .nav-dropdown.open{display:block;}
@@ -97,50 +99,61 @@
   }
   .pay-confirm-row input[type="checkbox"]{width:18px;height:18px;margin-top:2px;flex:none;}
   .pay-confirm-row label{font-size:12px;color:#4b3f22;font-weight:600;line-height:1.4;}
+  .order-mode-btn{
+    flex:1;padding:10px;border-radius:8px;border:1px solid #cbbd94;background:#fff;
+    color:#4b3f22;font-weight:700;font-size:13px;cursor:pointer;
+  }
+  .order-mode-btn.active{background:var(--orange);border-color:var(--orange);color:#fff;}
 
   .customer{max-width:720px;margin:0 auto;padding:20px 16px 120px;background:var(--page-bg);}
   .cat-rail{
     display:flex;gap:8px;overflow-x:auto;padding:14px 0 14px;
     position:sticky;top:71px;z-index:15;background:var(--steel);
+    border-bottom:1px solid var(--steel-line);
   }
   .cat-pill{
     flex:none;padding:7px 16px;border-radius:20px;font-size:12px;font-weight:700;
     background:var(--steel-line);color:var(--muted);cursor:pointer;white-space:nowrap;
     text-transform:uppercase;letter-spacing:0.5px;
   }
-  .cat-pill.active{background:var(--mustard);color:var(--ink);}
+  .cat-pill.active{background:var(--orange);color:var(--ink);}
   .cat-title{
-    font-family:'Bebas Neue',sans-serif;color:var(--diner-red);font-size:22px;letter-spacing:1px;
+    font-family:'Bebas Neue',sans-serif;color:var(--pink);font-size:22px;letter-spacing:1px;
     margin:24px 0 10px;display:flex;align-items:center;gap:10px;
     scroll-margin-top:130px;
   }
   .cat-title::after{content:'';flex:1;height:1px;background:var(--steel-line);}
   .dish{
-    display:flex;gap:12px;align-items:center;background:#343330;
+    display:flex;gap:12px;align-items:center;background:#FFFFFF;
     border:1px solid var(--steel-line);border-radius:10px;padding:12px;margin-bottom:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.05);
   }
   .dish-info{flex:1;min-width:0;}
-  .dish-info h3{font-size:15px;color:var(--cream);margin:0;font-weight:700;}
+  .dish-info h3{font-size:15px;color:var(--ink);margin:0;font-weight:700;}
+  .hot-badge{
+    display:inline-block;background:#FFF0E8;color:var(--orange);font-size:10px;font-weight:800;
+    padding:2px 7px;border-radius:10px;letter-spacing:0.3px;vertical-align:middle;
+  }
   .dish-info p{margin:3px 0 0;font-size:12px;color:var(--muted);}
-  .dish-price{font-family:'Space Mono',monospace;color:var(--mustard);font-size:14px;margin-top:6px;}
+  .dish-price{font-family:'Space Mono',monospace;color:var(--ink);font-weight:700;font-size:14px;margin-top:6px;}
   .qty-ctrl{display:flex;align-items:center;gap:8px;flex:none;}
   .qty-btn{
     width:28px;height:28px;border-radius:6px;border:1px solid var(--steel-line);
-    background:var(--steel);color:var(--cream);font-size:16px;cursor:pointer;
+    background:var(--steel-line);color:var(--ink);font-size:16px;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
   }
-  .qty-btn.add{background:var(--grill-green);border-color:var(--grill-green);color:#fff;}
+  .qty-btn.add{background:var(--orange);border-color:var(--orange);color:#fff;}
   .qty-num{white-space:nowrap;font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);}
 
   .cart-fab{
     position:fixed;left:16px;right:16px;bottom:16px;max-width:688px;margin:0 auto;
-    background:var(--diner-red);color:#fff;border-radius:10px;padding:14px 18px;
+    background:var(--orange);color:#fff;border-radius:10px;padding:14px 18px;
     display:flex;justify-content:space-between;align-items:center;font-weight:700;
     box-shadow:0 8px 24px rgba(0,0,0,0.45);cursor:pointer;z-index:30;
     text-transform:uppercase;letter-spacing:0.5px;font-size:13px;
   }
   .cart-fab .count{
-    background:#fff;color:var(--diner-red);width:22px;height:22px;border-radius:50%;
+    background:#fff;color:var(--orange);width:22px;height:22px;border-radius:50%;
     font-size:12px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;
   }
 
@@ -174,7 +187,7 @@
   .total-row{display:flex;justify-content:space-between;margin-top:16px;font-weight:700;font-size:17px;}
   .submit-btn{
     width:100%;margin-top:16px;padding:14px;border:none;border-radius:8px;
-    background:var(--diner-red);color:#fff;font-weight:700;font-size:14px;cursor:pointer;
+    background:var(--ink);color:#fff;font-weight:700;font-size:14px;cursor:pointer;
     text-transform:uppercase;letter-spacing:1px;
   }
   .submit-btn:disabled{opacity:0.5;}
@@ -195,7 +208,7 @@
     margin-top:8px;font-size:13px;color:#6b5d38;font-weight:600;
   }
   .track-time{
-    margin-top:10px;display:inline-block;background:var(--diner-red);color:#fff;
+    margin-top:10px;display:inline-block;background:var(--orange);color:#fff;
     padding:10px 20px;border-radius:8px;font-family:'Space Mono',monospace;font-size:18px;font-weight:700;
   }
 
@@ -211,7 +224,7 @@
   .item-modal .checker{border-radius:14px 14px 0 0;}
   .item-modal h2{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px;margin:12px 0 3px;}
   .item-modal .item-desc{font-size:12px;color:#7a6c46;margin-bottom:3px;}
-  .item-modal .item-price{font-family:'Space Mono',monospace;color:var(--diner-red);font-weight:700;margin-bottom:8px;font-size:14px;}
+  .item-modal .item-price{font-family:'Space Mono',monospace;color:var(--orange);font-weight:700;margin-bottom:8px;font-size:14px;}
   .item-modal .field{margin-top:10px;}
   .item-modal .field textarea{min-height:44px;}
   .option-group{margin-top:12px;}
@@ -221,7 +234,7 @@
     display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;
     border:1px solid #cbbd94;background:#fff;margin-bottom:5px;cursor:pointer;font-size:13px;
   }
-  .option-choice.selected{background:var(--mustard);border-color:var(--mustard);font-weight:700;}
+  .option-choice.selected{background:var(--orange);border-color:var(--orange);font-weight:700;}
   .option-choice input{pointer-events:none;}
   .qty-stepper-row{
     display:flex;align-items:center;justify-content:center;gap:16px;margin-top:14px;
@@ -230,7 +243,7 @@
   .qty-stepper-row .qty-display{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;min-width:22px;text-align:center;}
   .item-modal .submit-btn{margin-top:12px;padding:12px;font-size:13px;}
   .closed-banner{
-    display:none;background:var(--diner-red);color:#fff;text-align:center;
+    display:none;background:var(--ink);color:#fff;text-align:center;
     padding:12px 16px;font-size:13px;font-weight:700;line-height:1.5;
   }
   .closed-banner.show{display:block;}
@@ -264,7 +277,7 @@
   <div class="checker"></div>
   <h2>Contact Us</h2>
   <div id="contactBody"></div>
-  <button class="submit-btn" id="closeContact" style="background:var(--grill-green);">Close</button>
+  <button class="submit-btn" id="closeContact" style="background:var(--ink);">Close</button>
 </div>
 
 <div class="item-modal-backdrop" id="itemModalBackdrop"></div>
@@ -285,7 +298,9 @@ const DEFAULT_SITE = {
   tagline: 'Est. on Main Street',
   payNote: 'No online payment — please pay at the counter or with your server.',
   contact: { phone: '', address: '1620 NY-22, Brewster, NY 10509', hours: '' },
-  taxRate: 8.375
+  taxRate: 8.375,
+  deliveryEnabled: false,
+  onlinePaymentEnabled: false
 };
 const DEFAULT_MENU = [
   {
@@ -1847,6 +1862,8 @@ let SITE = DEFAULT_SITE;
 let cartItems = []; // [{lineId, dishId, name, price, qty, note, options:{label:value}}]
 let activeCat = MENU[0].cat;
 let trackingOrderId = null;
+let orderMode = 'pickup';
+let paymentMethod = 'store';
 let trackingTimer = null;
 let storeOpen = true;
 let storeStatus = null;
@@ -1903,6 +1920,7 @@ function updateClosedBanner(){
   renderCustomer();
 }
 
+let paymentMethodDefaulted = false;
 async function loadConfig(silent){
   try{
     const res = await fetch('/api/config');
@@ -1915,6 +1933,10 @@ async function loadConfig(silent){
       if(cfg.siteInfo) SITE = cfg.siteInfo;
     }
   }catch(e){}
+  if(!paymentMethodDefaulted && SITE.onlinePaymentEnabled){
+    paymentMethod = 'online';
+    paymentMethodDefaulted = true;
+  }
   if(!MENU.find(s=>s.cat===activeCat)) activeCat = MENU[0].cat;
   applySiteInfo();
   if(!silent) renderCustomer();
@@ -2006,16 +2028,16 @@ function renderCustomer(){
       html += `
         <div class="dish">
           <div class="dish-info">
-            <h3>${escapeHtml(it.name)}</h3>
+            <h3>${escapeHtml(it.name)}${it.hot ? ' <span class="hot-badge">🔥 Hot Seller</span>' : ''}</h3>
             <p>${escapeHtml(it.desc)}</p>
-            <div class="dish-price">$${it.price}${it.soldOut?' · <span style="color:var(--diner-red);">Sold Out</span>':''}</div>
+            <div class="dish-price">$${it.price}${it.soldOut?' · <span style="color:var(--pink);">Sold Out</span>':''}</div>
           </div>
           ${it.soldOut ? '' : `
           <div class="qty-ctrl">
             ${inCartQty>0?`<div class="qty-num">${inCartQty} in cart</div>`:''}
             ${canOrder
               ? `<div class="qty-btn add" data-act="openItem" data-id="${it.id}">+</div>`
-              : `<div class="qty-num" style="color:var(--diner-red);">Closed</div>`}
+              : `<div class="qty-num" style="color:var(--ink);">Closed</div>`}
           </div>`}
         </div>`;
     });
@@ -2171,12 +2193,13 @@ function renderDrawer(showConfirm){
         <div id="trackStatus" class="track-status">Waiting for the restaurant to confirm your pickup time…</div>
         <div id="trackTime" class="track-time" style="display:none;"></div>
         <div style="font-size:12px;color:#7a6c46;margin-top:10px;">Please pay in store when you arrive or when your order is ready.</div>
-        <button class="submit-btn" style="margin-top:18px;background:var(--grill-green);" id="closeConfirm" disabled>Waiting for confirmation…</button>
+        <button class="submit-btn" style="margin-top:18px;background:var(--orange);" id="closeConfirm" disabled>Waiting for confirmation…</button>
       </div>`;
     document.getElementById('closeConfirm').onclick = ()=>{
       if(document.getElementById('closeConfirm').disabled) return;
       stopTracking();
       cartItems = [];
+      orderMode = 'pickup';
       renderCustomer();
       closeDrawer();
     };
@@ -2204,13 +2227,21 @@ function renderDrawer(showConfirm){
             <span class="qty-btn" data-act="lineDec" data-lineid="${ci.lineId}" style="display:inline-flex;width:22px;height:22px;font-size:13px;">−</span>
             <span class="mono" style="margin:0 8px;">${ci.qty}</span>
             <span class="qty-btn add" data-act="lineInc" data-lineid="${ci.lineId}" style="display:inline-flex;width:22px;height:22px;font-size:13px;">+</span>
-            <span data-act="lineRemove" data-lineid="${ci.lineId}" style="margin-left:12px;color:var(--diner-red);font-weight:700;cursor:pointer;">Remove</span>
+            <span data-act="lineRemove" data-lineid="${ci.lineId}" style="margin-left:12px;color:var(--pink);font-weight:700;cursor:pointer;">Remove</span>
           </div>
         </div>
         <div class="mono">$${(ci.price*ci.qty).toFixed(2)}</div>
       </div>`;
     });
     html += `
+      ${SITE.deliveryEnabled ? `
+      <div class="field">
+        <label>Order Type</label>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button type="button" class="order-mode-btn ${orderMode==='pickup'?'active':''}" id="modePickupBtn" data-mode="pickup">🏬 Pickup</button>
+          <button type="button" class="order-mode-btn ${orderMode==='delivery'?'active':''}" id="modeDeliveryBtn" data-mode="delivery">🚗 Delivery</button>
+        </div>
+      </div>` : ''}
       <div class="field">
         <label>Your name</label>
         <input id="customerName" placeholder="For pickup call-out" />
@@ -2219,22 +2250,78 @@ function renderDrawer(showConfirm){
         <label>Phone Number</label>
         <input id="customerPhone" type="tel" placeholder="e.g. (555) 123-4567" />
       </div>
+      <div class="field" id="deliveryAddressField" style="${orderMode==='delivery'?'':'display:none;'}">
+        <label>Delivery Address</label>
+        <input id="deliveryAddress" placeholder="Street, city, zip" />
+      </div>
       <div class="field">
         <label>Notes (optional)</label>
         <textarea id="orderNote" rows="2" placeholder="Allergies, no onions, extra sauce…"></textarea>
       </div>
-      ${(SITE.contact && SITE.contact.address) ? `<div class="pickup-address-note">📍 Pickup Address: ${escapeHtml(SITE.contact.address)}</div>` : ''}
-      <div class="pay-confirm-row">
+      <div id="pickupAddressNote" style="${orderMode==='delivery'?'display:none;':''}">
+        ${(SITE.contact && SITE.contact.address) ? `<div class="pickup-address-note">📍 Pickup Address: ${escapeHtml(SITE.contact.address)}</div>` : ''}
+      </div>
+      ${SITE.onlinePaymentEnabled ? `
+      <div class="field">
+        <label>Payment</label>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button type="button" class="order-mode-btn ${paymentMethod==='online'?'active':''}" id="payOnlineBtn" data-method="online">💳 Pay Online</button>
+          <button type="button" class="order-mode-btn ${paymentMethod==='store'?'active':''}" id="payStoreBtn" data-method="store">💵 Pay in Store</button>
+        </div>
+      </div>` : ''}
+      <div class="pay-confirm-row" id="payStoreConfirmRow" style="${(SITE.onlinePaymentEnabled && paymentMethod==='online')?'display:none;':''}">
         <input type="checkbox" id="payInStoreConfirm">
         <label for="payInStoreConfirm">Pay in store — I understand payment is not collected online.</label>
       </div>
+      <div class="pay-confirm-row" id="payOnlineNote" style="${(SITE.onlinePaymentEnabled && paymentMethod==='online')?'':'display:none;'}">
+        <span style="font-size:18px;">🔒</span>
+        <label style="margin:0;">You'll enter your card details securely on the next screen.</label>
+      </div>
       <div class="total-row"><span>Subtotal</span><span class="mono">$${subtotal.toFixed(2)}</span></div>
       <div class="total-row"><span>Tax (${(SITE.taxRate!=null?SITE.taxRate:8.375)}%)</span><span class="mono">$${tax.toFixed(2)}</span></div>
-      <div class="total-row" style="font-weight:800;font-size:16px;"><span>Total (pay in store)</span><span class="mono">$${total.toFixed(2)}</span></div>
-      ${!storeOpen ? `<div class="pickup-address-note" style="color:var(--diner-red);border-color:var(--diner-red);">We're currently closed — online ordering isn't available right now.</div>` : ''}
-      <button class="submit-btn" id="submitOrder" disabled>Place Order</button>`;
+      <div class="total-row" style="font-weight:800;font-size:16px;"><span>Total</span><span class="mono">$${total.toFixed(2)}</span></div>
+      ${!storeOpen ? `<div class="pickup-address-note" style="color:var(--ink);border-color:var(--ink);">We're currently closed — online ordering isn't available right now.</div>` : ''}
+      <button class="submit-btn" id="submitOrder" disabled>${(SITE.onlinePaymentEnabled && paymentMethod==='online') ? 'Continue to Payment' : 'Place Order'}</button>`;
   }
   drawer.innerHTML = html;
+
+  const payOnlineBtn = document.getElementById('payOnlineBtn');
+  const payStoreBtn = document.getElementById('payStoreBtn');
+  if(payOnlineBtn && payStoreBtn){
+    payOnlineBtn.onclick = ()=>{
+      paymentMethod = 'online';
+      payOnlineBtn.classList.add('active'); payStoreBtn.classList.remove('active');
+      document.getElementById('payStoreConfirmRow').style.display = 'none';
+      document.getElementById('payOnlineNote').style.display = '';
+      document.getElementById('submitOrder').textContent = 'Continue to Payment';
+      updateSubmitEnabled();
+    };
+    payStoreBtn.onclick = ()=>{
+      paymentMethod = 'store';
+      payStoreBtn.classList.add('active'); payOnlineBtn.classList.remove('active');
+      document.getElementById('payStoreConfirmRow').style.display = '';
+      document.getElementById('payOnlineNote').style.display = 'none';
+      document.getElementById('submitOrder').textContent = 'Place Order';
+      updateSubmitEnabled();
+    };
+  }
+
+  const modePickupBtn = document.getElementById('modePickupBtn');
+  const modeDeliveryBtn = document.getElementById('modeDeliveryBtn');
+  if(modePickupBtn && modeDeliveryBtn){
+    modePickupBtn.onclick = ()=>{
+      orderMode = 'pickup';
+      modePickupBtn.classList.add('active'); modeDeliveryBtn.classList.remove('active');
+      document.getElementById('deliveryAddressField').style.display = 'none';
+      document.getElementById('pickupAddressNote').style.display = '';
+    };
+    modeDeliveryBtn.onclick = ()=>{
+      orderMode = 'delivery';
+      modeDeliveryBtn.classList.add('active'); modePickupBtn.classList.remove('active');
+      document.getElementById('deliveryAddressField').style.display = '';
+      document.getElementById('pickupAddressNote').style.display = 'none';
+    };
+  }
 
   drawer.querySelectorAll('[data-act="lineInc"]').forEach(el=>{
     el.onclick = ()=>{
@@ -2262,9 +2349,23 @@ function renderDrawer(showConfirm){
   const payCheck = document.getElementById('payInStoreConfirm');
   const submitBtn = document.getElementById('submitOrder');
   if(payCheck && submitBtn){
-    payCheck.onchange = ()=>{ submitBtn.disabled = !payCheck.checked || !storeOpen; };
-    submitBtn.disabled = !payCheck.checked || !storeOpen;
-    submitBtn.onclick = submitOrder;
+    payCheck.onchange = updateSubmitEnabled;
+    updateSubmitEnabled();
+    submitBtn.onclick = ()=>{
+      if((SITE.onlinePaymentEnabled && paymentMethod==='online')) submitOrderOnline();
+      else submitOrder();
+    };
+  }
+}
+
+function updateSubmitEnabled(){
+  const submitBtn = document.getElementById('submitOrder');
+  const payCheck = document.getElementById('payInStoreConfirm');
+  if(!submitBtn) return;
+  if(SITE.onlinePaymentEnabled && paymentMethod==='online'){
+    submitBtn.disabled = !storeOpen;
+  } else {
+    submitBtn.disabled = !payCheck || !payCheck.checked || !storeOpen;
   }
 }
 
@@ -2279,9 +2380,7 @@ function closeDrawer(){
   document.getElementById('drawer').classList.remove('open');
 }
 
-async function submitOrder(){
-  const btn = document.getElementById('submitOrder');
-  btn.disabled = true; btn.textContent = 'Sending…';
+function buildOrderPayload(){
   const {subtotal,tax,total} = cartCountTotal();
   const items = cartItems.map(ci=>({
     name: ci.name, qty: ci.qty, price: ci.price, note: ci.note || '', options: ci.options || {}, category: ci.category || ''
@@ -2289,10 +2388,19 @@ async function submitOrder(){
   const name = document.getElementById('customerName').value;
   const phone = document.getElementById('customerPhone').value;
   const note = document.getElementById('orderNote').value;
-  const payload = {
+  const isDelivery = SITE.deliveryEnabled && orderMode === 'delivery';
+  const deliveryAddress = isDelivery ? (document.getElementById('deliveryAddress').value || '') : '';
+  return {
     items, subtotal, tax, total, note, name, phone,
-    location: 'Pickup',
+    location: isDelivery ? 'Delivery' : 'Pickup',
+    deliveryAddress,
   };
+}
+
+async function submitOrder(){
+  const btn = document.getElementById('submitOrder');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const payload = buildOrderPayload();
   try{
     const res = await fetch('/api/orders', {
       method:'POST',
@@ -2313,6 +2421,39 @@ async function submitOrder(){
   }catch(e){
     btn.disabled = false; btn.textContent = 'Place Order';
     alert('Something went wrong — please try again.');
+    console.error(e);
+  }
+}
+
+async function submitOrderOnline(){
+  const btn = document.getElementById('submitOrder');
+  btn.disabled = true; btn.textContent = 'Redirecting to payment…';
+  const payload = buildOrderPayload();
+  try{
+    localStorage.setItem('pendingCartRestore', JSON.stringify({
+      cartItems, name: payload.name, phone: payload.phone, note: payload.note,
+      orderMode, savedAt: Date.now()
+    }));
+  }catch(e){}
+  try{
+    const res = await fetch('/api/checkout', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(res.status === 403){
+      const err = await res.json().catch(()=>({}));
+      await loadStoreStatus();
+      alert(err.message || "We're currently closed for online ordering.");
+      btn.disabled = true; btn.textContent = 'Continue to Payment';
+      return;
+    }
+    if(!res.ok) throw new Error('checkout failed');
+    const data = await res.json();
+    window.location.href = data.url;
+  }catch(e){
+    btn.disabled = false; btn.textContent = 'Continue to Payment';
+    alert('Something went wrong starting payment — please try again.');
     console.error(e);
   }
 }
@@ -2402,7 +2543,48 @@ function renderContact(){
   document.getElementById('contactBody').innerHTML = rows.length ? rows.join('') : '<div class="contact-line">Contact info coming soon.</div>';
 }
 
-loadConfig(false);
+async function handleReturnFromPayment(){
+  const params = new URLSearchParams(window.location.search);
+  const checkoutId = params.get('checkout_id');
+  const sessionId = params.get('session_id');
+  const cancelled = params.get('payment_cancelled');
+
+  if(checkoutId && sessionId){
+    try{
+      const res = await fetch(`/api/checkout/verify?checkout_id=${encodeURIComponent(checkoutId)}&session_id=${encodeURIComponent(sessionId)}`);
+      const data = await res.json().catch(()=>({}));
+      if(res.ok && data.ok && data.order){
+        localStorage.removeItem('pendingCartRestore');
+        cartItems = [];
+        renderCustomer();
+        openDrawer();
+        renderDrawer(true);
+        startTracking(data.order.id);
+      } else {
+        alert(data.message || data.error || 'We could not confirm your payment. If you were charged, please contact us.');
+      }
+    }catch(e){
+      console.error(e);
+      alert('We could not confirm your payment. If you were charged, please contact us.');
+    }
+    history.replaceState({}, '', window.location.pathname);
+    return;
+  }
+
+  if(cancelled){
+    try{
+      const saved = JSON.parse(localStorage.getItem('pendingCartRestore') || 'null');
+      if(saved && Array.isArray(saved.cartItems)){
+        cartItems = saved.cartItems;
+        orderMode = saved.orderMode || 'pickup';
+        renderCustomer();
+      }
+    }catch(e){}
+    history.replaceState({}, '', window.location.pathname);
+  }
+}
+
+loadConfig(false).then(()=>handleReturnFromPayment());
 loadStoreStatus();
 setInterval(()=>loadConfig(true), 20000);
 setInterval(loadStoreStatus, 60000);
