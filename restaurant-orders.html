@@ -210,12 +210,21 @@ function playLoudAlarm(){
     if(!audioUnlocked){
       tryUnlockAudio(); // may still be silently blocked until a real tap happens
     } else {
-      audio.currentTime = 0;
-      const p = audio.play();
-      if(p && p.catch) p.catch(err=>console.warn('alarm play failed', err));
+      let repeatsLeft = 5;
+      const playOnce = ()=>{
+        audio.currentTime = 0;
+        const p = audio.play();
+        if(p && p.catch) p.catch(err=>console.warn('alarm play failed', err));
+      };
+      playOnce();
+      const repeatId = setInterval(()=>{
+        repeatsLeft--;
+        if(repeatsLeft <= 0){ clearInterval(repeatId); return; }
+        playOnce();
+      }, 900);
     }
   }
-  if(navigator.vibrate){ navigator.vibrate([300,100,300,100,300]); }
+  if(navigator.vibrate){ navigator.vibrate([300,100,300,100,300,100,300,100,300]); }
 }
 
 async function loadOrders(){
