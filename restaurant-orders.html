@@ -162,32 +162,6 @@
 <div class="kitchen" id="kitchenView"></div>
 
 <script>
-// The page itself is protected by the browser's native login prompt, but some
-// in-app browsers don't reliably reuse that login for fetch() requests afterward.
-// So we ask once here too and attach it explicitly to every request we make —
-// this doesn't depend on the browser's own credential caching at all.
-let authHeaderValue = sessionStorage.getItem('restaurantAuthHeader') || '';
-
-function authHeaders(extra){
-  return { ...(extra||{}), 'Authorization': authHeaderValue };
-}
-
-function promptForCredentials(message){
-  const user = window.prompt((message ? message + '\n\n' : '') + 'Staff username:');
-  if(user === null) return false;
-  const pass = window.prompt('Staff password:');
-  if(pass === null) return false;
-  authHeaderValue = 'Basic ' + btoa(user + ':' + pass);
-  sessionStorage.setItem('restaurantAuthHeader', authHeaderValue);
-  return true;
-}
-
-async function ensureAuthed(){
-  if(!authHeaderValue){
-    promptForCredentials('Please log in to view kitchen orders.');
-  }
-}
-
 let soundEnabled = true;
 let knownOrderIds = new Set();
 let firstLoad = true;
@@ -245,11 +219,9 @@ function playLoudAlarm(){
 
 async function loadOrders(){
   try{
-    const res = await fetch('/api/orders', { headers: authHeaders() });
+    const res = await fetch('/api/orders');
     if(res.status === 401){
-      authHeaderValue = '';
-      sessionStorage.removeItem('restaurantAuthHeader');
-      promptForCredentials('Login expired or incorrect — please log in again.');
+      window.location.href = '/staff-login.html?redirect=' + encodeURIComponent(window.location.pathname);
       return null;
     }
     if(!res.ok) return null; // signal a failed request, distinct from a genuinely empty list
@@ -442,15 +414,11 @@ async function renderKitchen(){
       try{
         const res = await fetch('/api/orders/'+id, {
           method:'PATCH',
-          headers: authHeaders({'Content-Type':'application/json'}),
+          headers: {'Content-Type':'application/json'},
           body: JSON.stringify({status:'confirmed', pickupTime:label, confirmedAt: Date.now()})
         });
         if(res.status === 401){
-          authHeaderValue = '';
-          sessionStorage.removeItem('restaurantAuthHeader');
-          promptForCredentials('Login expired or incorrect — please log in again.');
-          btn.disabled = false;
-          btn.textContent = originalText;
+          window.location.href = '/staff-login.html?redirect=' + encodeURIComponent(window.location.pathname);
           return;
         }
         if(!res.ok){
@@ -475,7 +443,7 @@ async function renderKitchen(){
     btn.onclick = async ()=>{
       const id = btn.dataset.id;
       try{
-        await fetch('/api/orders/'+id, {method:'DELETE', headers: authHeaders()});
+        await fetch('/api/orders/'+id, {method:'DELETE'});
         renderKitchen();
       }catch(e){ console.error(e); }
     };
@@ -517,7 +485,6 @@ function connectLiveUpdates(){
   }catch(e){ console.warn('Live updates not supported, falling back to polling only', e); }
 }
 
-ensureAuthed();
 refreshAudioUnlockBanner();
 loadSiteInfo();
 renderKitchen();

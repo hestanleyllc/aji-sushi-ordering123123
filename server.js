@@ -173,21 +173,99 @@ app.use(express.json());
 
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
+const crypto = require('crypto');
+// Regenerated every time the server restarts — staff will need to log in again after
+// a redeploy/restart, but this is what makes the login reliable everywhere (no
+// dependence on any browser's own HTTP Basic Auth credential caching, which some
+// in-app browsers handle poorly and can get stuck repeatedly re-prompting).
+const SESSION_TOKEN = crypto.randomBytes(24).toString('hex');
+const SESSION_COOKIE = 'staff_session';
+
+function parseCookies(req){
+  const header = req.headers.cookie;
+  const cookies = {};
+  if(!header) return cookies;
+  header.split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if(idx === -1) return;
+    cookies[pair.slice(0, idx).trim()] = decodeURIComponent(pair.slice(idx + 1).trim());
+  });
+  return cookies;
+}
 
 function requireAdminAuth(req, res, next){
-  const authHeader = req.headers.authorization;
-  if(!authHeader || !authHeader.startsWith('Basic ')){
-    res.set('WWW-Authenticate', 'Basic realm="Maple & Main Admin"');
-    return res.status(401).send('Authentication required');
+  const cookies = parseCookies(req);
+  if(cookies[SESSION_COOKIE] === SESSION_TOKEN) return next();
+  if(req.path.startsWith('/api/')){
+    return res.status(401).json({ error: 'not_logged_in', message: 'Please log in again.' });
   }
-  const decoded = Buffer.from(authHeader.split(' ')[1], 'base64').toString();
-  const sep = decoded.indexOf(':');
-  const user = decoded.slice(0, sep);
-  const pass = decoded.slice(sep + 1);
-  if(user === ADMIN_USER && pass === ADMIN_PASSWORD) return next();
-  res.set('WWW-Authenticate', 'Basic realm="Maple & Main Admin"');
-  return res.status(401).send('Invalid credentials');
+  return res.redirect('/staff-login.html?redirect=' + encodeURIComponent(req.originalUrl));
 }
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if(username === ADMIN_USER && password === ADMIN_PASSWORD){
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${SESSION_TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
+    return res.json({ ok: true });
+  }
+  return res.status(401).json({ error: 'invalid', message: 'Incorrect username or password.' });
+});
+
+app.get('/staff-login.html', (req, res) => {
+  const redirect = escapeAttr(req.query.redirect || '/restaurant-orders.html');
+  res.set('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staff Login</title>
+<style>
+  body{font-family:-apple-system,Arial,sans-serif;background:#2B2B2E;color:#FAF3E4;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
+  .box{background:#FAF3E4;color:#1C1B19;border-radius:14px;padding:28px 24px;width:90%;max-width:340px;}
+  h1{font-size:20px;margin:0 0 18px;}
+  label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#7a6c46;}
+  input{width:100%;padding:10px;margin:6px 0 16px;border-radius:8px;border:1px solid #cbbd94;font-size:15px;box-sizing:border-box;}
+  button{width:100%;padding:12px;border:none;border-radius:8px;background:#C8102E;color:#fff;font-weight:700;font-size:14px;cursor:pointer;}
+  #err{color:#C8102E;font-size:13px;margin-bottom:10px;display:none;}
+</style></head>
+<body>
+  <div class="box">
+    <h1>Staff Login</h1>
+    <div id="err"></div>
+    <form id="loginForm">
+      <label>Username</label>
+      <input id="username" autocapitalize="off" autocorrect="off">
+      <label>Password</label>
+      <input id="password" type="password">
+      <button type="submit">Log In</button>
+    </form>
+  </div>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errEl = document.getElementById('err');
+      errEl.style.display = 'none';
+      try{
+        const res = await fetch('/api/login', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json().catch(()=>({}));
+        if(res.ok && data.ok){
+          window.location.href = ${JSON.stringify(redirect)};
+        } else {
+          errEl.textContent = data.message || 'Login failed.';
+          errEl.style.display = 'block';
+        }
+      }catch(e){
+        errEl.textContent = 'Network error — please try again.';
+        errEl.style.display = 'block';
+      }
+    });
+  </script>
+</body></html>`);
+});
 
 // ---- Pages (all html files live in the same folder as server.js — no subfolder needed) ----
 function escapeAttr(str){
