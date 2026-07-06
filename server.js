@@ -359,7 +359,11 @@ app.get('/api/orders', requireAdminAuth, (req, res) => {
 // Also staff-only, since it streams new order details as they arrive.
 let sseClients = [];
 
-app.get('/api/events', requireAdminAuth, (req, res) => {
+// Not password-protected: EventSource (unlike fetch) can't send a custom
+// Authorization header, and some browsers handle its native auth prompt poorly,
+// causing repeated login popups. The regular polling requests (which ARE
+// protected) remain the authoritative, secure data source either way.
+app.get('/api/events', (req, res) => {
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
