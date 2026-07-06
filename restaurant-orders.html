@@ -162,6 +162,32 @@
 <div class="kitchen" id="kitchenView"></div>
 
 <script>
+// The page itself is protected by the browser's native login prompt, but some
+// in-app browsers don't reliably reuse that login for fetch() requests afterward.
+// So we ask once here too and attach it explicitly to every request we make —
+// this doesn't depend on the browser's own credential caching at all.
+let authHeaderValue = sessionStorage.getItem('restaurantAuthHeader') || '';
+
+function authHeaders(extra){
+  return { ...(extra||{}), 'Authorization': authHeaderValue };
+}
+
+function promptForCredentials(message){
+  const user = window.prompt((message ? message + '\n\n' : '') + 'Staff username:');
+  if(user === null) return false;
+  const pass = window.prompt('Staff password:');
+  if(pass === null) return false;
+  authHeaderValue = 'Basic ' + btoa(user + ':' + pass);
+  sessionStorage.setItem('restaurantAuthHeader', authHeaderValue);
+  return true;
+}
+
+async function ensureAuthed(){
+  if(!authHeaderValue){
+    promptForCredentials('Please log in to view kitchen orders.');
+  }
+}
+
 let soundEnabled = true;
 let knownOrderIds = new Set();
 let firstLoad = true;
@@ -219,10 +245,16 @@ function playLoudAlarm(){
 
 async function loadOrders(){
   try{
-    const res = await fetch('/api/orders');
-    if(!res.ok) return [];
+    const res = await fetch('/api/orders', { headers: authHeaders() });
+    if(res.status === 401){
+      authHeaderValue = '';
+      sessionStorage.removeItem('restaurantAuthHeader');
+      promptForCredentials('Login expired or incorrect — please log in again.');
+      return null;
+    }
+    if(!res.ok) return null; // signal a failed request, distinct from a genuinely empty list
     return await res.json();
-  }catch(e){ return []; }
+  }catch(e){ return null; }
 }
 
 function timeAgo(ts){
@@ -257,6 +289,16 @@ let hasPendingOrders = false;
 async function renderKitchen(){
   const el = document.getElementById('kitchenView');
   const list = await loadOrders();
+  if(list === null){
+    // The request failed (network hiccup, auth issue, etc). Don't wipe an
+    // already-rendered board — old orders would look "new" again on the next
+    // successful poll and wrongly re-trigger the alarm. But if we've never
+    // rendered anything yet, at least show a clear message instead of blank.
+    if(!el.innerHTML.trim()){
+      el.innerHTML = '<div style="padding:20px;color:var(--diner-red);font-weight:700;">⚠️ Could not load orders. If a login prompt appeared, please fill it in. Retrying automatically…</div>';
+    }
+    return;
+  }
 
   const currentIds = new Set(list.map(o=>o.id));
   if(!firstLoad){
@@ -400,9 +442,17 @@ async function renderKitchen(){
       try{
         const res = await fetch('/api/orders/'+id, {
           method:'PATCH',
-          headers:{'Content-Type':'application/json'},
+          headers: authHeaders({'Content-Type':'application/json'}),
           body: JSON.stringify({status:'confirmed', pickupTime:label, confirmedAt: Date.now()})
         });
+        if(res.status === 401){
+          authHeaderValue = '';
+          sessionStorage.removeItem('restaurantAuthHeader');
+          promptForCredentials('Login expired or incorrect — please log in again.');
+          btn.disabled = false;
+          btn.textContent = originalText;
+          return;
+        }
         if(!res.ok){
           const errText = await res.text().catch(()=>'');
           alert('Could not confirm this order (server said: ' + res.status + '). Please try again.\n' + errText);
@@ -425,7 +475,7 @@ async function renderKitchen(){
     btn.onclick = async ()=>{
       const id = btn.dataset.id;
       try{
-        await fetch('/api/orders/'+id, {method:'DELETE'});
+        await fetch('/api/orders/'+id, {method:'DELETE', headers: authHeaders()});
         renderKitchen();
       }catch(e){ console.error(e); }
     };
@@ -467,6 +517,7 @@ function connectLiveUpdates(){
   }catch(e){ console.warn('Live updates not supported, falling back to polling only', e); }
 }
 
+ensureAuthed();
 refreshAudioUnlockBanner();
 loadSiteInfo();
 renderKitchen();
