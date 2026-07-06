@@ -174,14 +174,13 @@ app.use(express.json());
 const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
 const crypto = require('crypto');
-// Regenerated every time the server restarts — staff will need to log in again after
-// a redeploy/restart, but this is what makes the login reliable everywhere (no
-// dependence on any browser's own HTTP Basic Auth credential caching, which some
-// in-app browsers handle poorly and can get stuck repeatedly re-prompting).
-const ADMIN_SESSION_TOKEN = crypto.randomBytes(24).toString('hex');
-const KITCHEN_SESSION_TOKEN = crypto.randomBytes(24).toString('hex');
 const ADMIN_COOKIE = 'admin_session';
 const KITCHEN_COOKIE = 'kitchen_session';
+// A fixed secret mixed into the session token. Set SESSION_SECRET in Render for
+// extra safety, but even without it, the token stays the same across restarts
+// (it's derived from the login credentials themselves, not randomly generated),
+// so staff stay logged in — a restart no longer forces everyone to log in again.
+const SESSION_SECRET = process.env.SESSION_SECRET || 'maple-and-main-fixed-secret';
 
 // The Render env vars (ADMIN_USER/ADMIN_PASSWORD) are only the starting fallback.
 // Once the owner sets custom logins in the admin panel, those are stored in
@@ -195,6 +194,14 @@ function getAuthCreds(){
     kitchenUser: custom.kitchenUser || DEFAULT_ADMIN_USER,
     kitchenPassword: custom.kitchenPassword || DEFAULT_ADMIN_PASSWORD,
   };
+}
+
+function sessionTokenFor(role){
+  const creds = getAuthCreds();
+  const base = role === 'admin'
+    ? `admin:${creds.adminUser}:${creds.adminPassword}`
+    : `kitchen:${creds.kitchenUser}:${creds.kitchenPassword}`;
+  return crypto.createHmac('sha256', SESSION_SECRET).update(base).digest('hex');
 }
 
 function parseCookies(req){
@@ -212,7 +219,7 @@ function parseCookies(req){
 // Full admin access (menu, hours, logins, etc.)
 function requireAdminAuth(req, res, next){
   const cookies = parseCookies(req);
-  if(cookies[ADMIN_COOKIE] === ADMIN_SESSION_TOKEN) return next();
+  if(cookies[ADMIN_COOKIE] === sessionTokenFor('admin')) return next();
   if(req.path.startsWith('/api/')){
     return res.status(401).json({ error: 'not_logged_in', message: 'Please log in again.' });
   }
@@ -222,7 +229,7 @@ function requireAdminAuth(req, res, next){
 // Kitchen/order-screen access only (a logged-in admin can use this too, since admin is the master account).
 function requireKitchenAuth(req, res, next){
   const cookies = parseCookies(req);
-  if(cookies[KITCHEN_COOKIE] === KITCHEN_SESSION_TOKEN || cookies[ADMIN_COOKIE] === ADMIN_SESSION_TOKEN) return next();
+  if(cookies[KITCHEN_COOKIE] === sessionTokenFor('kitchen') || cookies[ADMIN_COOKIE] === sessionTokenFor('admin')) return next();
   if(req.path.startsWith('/api/')){
     return res.status(401).json({ error: 'not_logged_in', message: 'Please log in again.' });
   }
@@ -234,12 +241,12 @@ app.post('/api/login', (req, res) => {
   const creds = getAuthCreds();
   if(role === 'admin'){
     if(username === creds.adminUser && password === creds.adminPassword){
-      res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=${ADMIN_SESSION_TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
+      res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=${sessionTokenFor('admin')}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
       return res.json({ ok: true });
     }
   } else {
     if(username === creds.kitchenUser && password === creds.kitchenPassword){
-      res.setHeader('Set-Cookie', `${KITCHEN_COOKIE}=${KITCHEN_SESSION_TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
+      res.setHeader('Set-Cookie', `${KITCHEN_COOKIE}=${sessionTokenFor('kitchen')}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
       return res.json({ ok: true });
     }
   }

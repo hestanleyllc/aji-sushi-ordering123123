@@ -383,7 +383,7 @@ async function renderKitchen(){
         } else {
           const badge = o.pickupTime ? `<div class="pickup-badge"><span class="clock">⏱</span>Pickup ${o.pickupTime}</div>` : '';
           bodyHtml = `${badge}<div class="ticket-actions">
-              <button class="tk-btn archive" data-collapse-id="${o.id}" style="background:var(--chrome);color:var(--ink);">Collapse ▴</button>
+              <button class="tk-btn collapse-btn" data-collapse-id="${o.id}" style="background:var(--chrome);color:var(--ink);">Collapse ▴</button>
               <button class="tk-btn archive" data-id="${o.id}" data-next="archived">Remove from History</button>
             </div>`;
         }
