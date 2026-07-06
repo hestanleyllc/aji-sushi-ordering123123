@@ -394,15 +394,30 @@ async function renderKitchen(){
       const sel = pendingSelections[id];
       const label = computePickupLabel(sel);
       if(!label) return;
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Confirming…';
       try{
-        await fetch('/api/orders/'+id, {
+        const res = await fetch('/api/orders/'+id, {
           method:'PATCH',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({status:'confirmed', pickupTime:label, confirmedAt: Date.now()})
         });
+        if(!res.ok){
+          const errText = await res.text().catch(()=>'');
+          alert('Could not confirm this order (server said: ' + res.status + '). Please try again.\n' + errText);
+          btn.disabled = false;
+          btn.textContent = originalText;
+          return;
+        }
         delete pendingSelections[id];
         renderKitchen();
-      }catch(e){ console.error(e); }
+      }catch(e){
+        console.error(e);
+        alert('Network error confirming this order. Please check your connection and try again.');
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     };
   });
   // remove from history
