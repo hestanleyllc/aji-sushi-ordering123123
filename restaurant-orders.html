@@ -306,6 +306,7 @@ async function renderKitchen(){
         <div class="refresh-note" id="lastRefresh"></div>
       </div>
     </div>
+    <div id="diagBox" style="background:#000;color:#0f0;font-family:monospace;font-size:12px;padding:8px 12px;margin-bottom:12px;border-radius:6px;line-height:1.6;"></div>
     <div class="columns">`;
 
   colDefs.forEach(col=>{
@@ -370,6 +371,20 @@ async function renderKitchen(){
   html += `</div>`;
   el.innerHTML = html;
   document.getElementById('lastRefresh').textContent = 'Last refreshed '+new Date().toLocaleTimeString('en-US');
+  {
+    const audio = document.getElementById('alarmAudio');
+    const diag = document.getElementById('diagBox');
+    if(diag){
+      diag.innerHTML =
+        'pendingCount=' + groups.pending.length +
+        ' | hasPendingOrders=' + hasPendingOrders +
+        ' | audio.volume=' + (audio ? audio.volume : 'n/a') +
+        ' | audio.paused=' + (audio ? audio.paused : 'n/a') +
+        ' | audioUnlocked=' + audioUnlocked +
+        ' | muteTimer=' + (muteTimer ? 'active' : 'null') +
+        ' | soundEnabled=' + soundEnabled;
+    }
+  }
 
   const soundBtn = document.getElementById('soundToggle');
   soundBtn.textContent = soundEnabled ? '🔔 Sound On' : '🔕 Sound Off';
