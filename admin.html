@@ -130,6 +130,9 @@
   <h2>Printer Stations</h2>
   <div class="card" id="stationsCard"></div>
 
+  <h2>Login Credentials</h2>
+  <div class="card" id="credentialsCard"></div>
+
   <h2>Menu</h2>
   <button class="add-cat-btn" id="loadFullMenuBtn" style="border-color:var(--diner-red);color:var(--diner-red);margin-bottom:12px;">⚠️ Load Full Menu (174 items) — replaces everything below</button>
   <div id="menuList"></div>
@@ -1773,6 +1776,7 @@ async function loadConfig(){
   renderSeo();
   renderHours();
   renderStations();
+  renderCredentials();
   renderMenu();
 }
 
@@ -1879,6 +1883,48 @@ function renderStations(){
   document.getElementById('addStationBtn').onclick = ()=>{
     state.printStations.push({ id: sid(), name:'New Station', printerId:'' });
     renderStations();
+  };
+}
+
+function renderCredentials(){
+  const el = document.getElementById('credentialsCard');
+  el.innerHTML = `
+    <div style="font-size:11px;color:#7a6c46;margin-bottom:14px;">
+      Set separate logins for the kitchen order screen and this admin panel. Leave a field blank to keep its current value unchanged. These save immediately (not part of "Save Changes" below).
+    </div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.5px;color:var(--mustard);margin-bottom:8px;">Kitchen Order Screen Login</div>
+    <div class="field"><label>Username</label><input id="credKitchenUser" placeholder="Leave blank to keep current"></div>
+    <div class="field"><label>Password</label><input id="credKitchenPass" type="password" placeholder="Leave blank to keep current"></div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.5px;color:var(--mustard);margin:14px 0 8px;">Admin Panel Login</div>
+    <div class="field"><label>Username</label><input id="credAdminUser" placeholder="Leave blank to keep current"></div>
+    <div class="field"><label>Password</label><input id="credAdminPass" type="password" placeholder="Leave blank to keep current"></div>
+    <button class="submit-btn" id="saveCredsBtn" style="margin-top:10px;">Update Login Credentials</button>
+    <span class="saved-note" id="credsSavedNote" style="display:block;margin-top:8px;">Saved ✓</span>
+  `;
+  document.getElementById('saveCredsBtn').onclick = async ()=>{
+    const btn = document.getElementById('saveCredsBtn');
+    const payload = {
+      kitchenUser: document.getElementById('credKitchenUser').value,
+      kitchenPassword: document.getElementById('credKitchenPass').value,
+      adminUser: document.getElementById('credAdminUser').value,
+      adminPassword: document.getElementById('credAdminPass').value,
+    };
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try{
+      const res = await fetch('/api/credentials', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      if(!res.ok) throw new Error('save failed');
+      const note = document.getElementById('credsSavedNote');
+      note.classList.add('show');
+      setTimeout(()=>note.classList.remove('show'), 2500);
+      renderCredentials();
+    }catch(e){
+      alert('Could not update credentials — please try again.');
+    }
+    btn.disabled = false; btn.textContent = 'Update Login Credentials';
   };
 }
 

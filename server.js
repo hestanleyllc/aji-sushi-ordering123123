@@ -171,15 +171,31 @@ async function printOrderTicket(order){
 const app = express();
 app.use(express.json());
 
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
+const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
 const crypto = require('crypto');
 // Regenerated every time the server restarts — staff will need to log in again after
 // a redeploy/restart, but this is what makes the login reliable everywhere (no
 // dependence on any browser's own HTTP Basic Auth credential caching, which some
 // in-app browsers handle poorly and can get stuck repeatedly re-prompting).
-const SESSION_TOKEN = crypto.randomBytes(24).toString('hex');
-const SESSION_COOKIE = 'staff_session';
+const ADMIN_SESSION_TOKEN = crypto.randomBytes(24).toString('hex');
+const KITCHEN_SESSION_TOKEN = crypto.randomBytes(24).toString('hex');
+const ADMIN_COOKIE = 'admin_session';
+const KITCHEN_COOKIE = 'kitchen_session';
+
+// The Render env vars (ADMIN_USER/ADMIN_PASSWORD) are only the starting fallback.
+// Once the owner sets custom logins in the admin panel, those are stored in
+// data.config.auth and take over — this lets the restaurant-orders login and the
+// admin login be two separate accounts, changeable without touching Render at all.
+function getAuthCreds(){
+  const custom = (data.config && data.config.auth) || {};
+  return {
+    adminUser: custom.adminUser || DEFAULT_ADMIN_USER,
+    adminPassword: custom.adminPassword || DEFAULT_ADMIN_PASSWORD,
+    kitchenUser: custom.kitchenUser || DEFAULT_ADMIN_USER,
+    kitchenPassword: custom.kitchenPassword || DEFAULT_ADMIN_PASSWORD,
+  };
+}
 
 function parseCookies(req){
   const header = req.headers.cookie;
@@ -193,30 +209,51 @@ function parseCookies(req){
   return cookies;
 }
 
+// Full admin access (menu, hours, logins, etc.)
 function requireAdminAuth(req, res, next){
   const cookies = parseCookies(req);
-  if(cookies[SESSION_COOKIE] === SESSION_TOKEN) return next();
+  if(cookies[ADMIN_COOKIE] === ADMIN_SESSION_TOKEN) return next();
   if(req.path.startsWith('/api/')){
     return res.status(401).json({ error: 'not_logged_in', message: 'Please log in again.' });
   }
-  return res.redirect('/staff-login.html?redirect=' + encodeURIComponent(req.originalUrl));
+  return res.redirect('/staff-login.html?role=admin&redirect=' + encodeURIComponent(req.originalUrl));
+}
+
+// Kitchen/order-screen access only (a logged-in admin can use this too, since admin is the master account).
+function requireKitchenAuth(req, res, next){
+  const cookies = parseCookies(req);
+  if(cookies[KITCHEN_COOKIE] === KITCHEN_SESSION_TOKEN || cookies[ADMIN_COOKIE] === ADMIN_SESSION_TOKEN) return next();
+  if(req.path.startsWith('/api/')){
+    return res.status(401).json({ error: 'not_logged_in', message: 'Please log in again.' });
+  }
+  return res.redirect('/staff-login.html?role=kitchen&redirect=' + encodeURIComponent(req.originalUrl));
 }
 
 app.post('/api/login', (req, res) => {
-  const { username, password } = req.body || {};
-  if(username === ADMIN_USER && password === ADMIN_PASSWORD){
-    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${SESSION_TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
-    return res.json({ ok: true });
+  const { username, password, role } = req.body || {};
+  const creds = getAuthCreds();
+  if(role === 'admin'){
+    if(username === creds.adminUser && password === creds.adminPassword){
+      res.setHeader('Set-Cookie', `${ADMIN_COOKIE}=${ADMIN_SESSION_TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
+      return res.json({ ok: true });
+    }
+  } else {
+    if(username === creds.kitchenUser && password === creds.kitchenPassword){
+      res.setHeader('Set-Cookie', `${KITCHEN_COOKIE}=${KITCHEN_SESSION_TOKEN}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60*60*24*30}`);
+      return res.json({ ok: true });
+    }
   }
   return res.status(401).json({ error: 'invalid', message: 'Incorrect username or password.' });
 });
 
 app.get('/staff-login.html', (req, res) => {
   const redirect = escapeAttr(req.query.redirect || '/restaurant-orders.html');
+  const role = req.query.role === 'admin' ? 'admin' : 'kitchen';
+  const title = role === 'admin' ? 'Admin Login' : 'Kitchen Staff Login';
   res.set('Content-Type', 'text/html');
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Staff Login</title>
+<title>${escapeAttr(title)}</title>
 <style>
   body{font-family:-apple-system,Arial,sans-serif;background:#2B2B2E;color:#FAF3E4;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
   .box{background:#FAF3E4;color:#1C1B19;border-radius:14px;padding:28px 24px;width:90%;max-width:340px;}
@@ -228,7 +265,7 @@ app.get('/staff-login.html', (req, res) => {
 </style></head>
 <body>
   <div class="box">
-    <h1>Staff Login</h1>
+    <h1>${escapeAttr(title)}</h1>
     <div id="err"></div>
     <form id="loginForm">
       <label>Username</label>
@@ -249,7 +286,7 @@ app.get('/staff-login.html', (req, res) => {
         const res = await fetch('/api/login', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password, role: ${JSON.stringify(role)} })
         });
         const data = await res.json().catch(()=>({}));
         if(res.ok && data.ok){
@@ -295,7 +332,7 @@ app.get('/customer-order.html', (req, res) => {
     res.send(injectSeo(html, data.config.seo));
   });
 });
-app.get('/restaurant-orders.html', requireAdminAuth, (req, res) => res.sendFile(path.join(__dirname, 'restaurant-orders.html')));
+app.get('/restaurant-orders.html', requireKitchenAuth, (req, res) => res.sendFile(path.join(__dirname, 'restaurant-orders.html')));
 app.get('/admin.html', requireAdminAuth, (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 
 // If DATA_DIR is set (e.g. pointing to a Render persistent disk mount path),
@@ -415,6 +452,7 @@ app.get('/api/config', (req, res) => {
   if(publicConfig.siteInfo) delete publicConfig.siteInfo.notifyEmail;
   if(publicConfig.siteInfo) publicConfig.siteInfo.onlinePaymentEnabled = !!stripe;
   delete publicConfig.printStations;
+  delete publicConfig.auth;
   res.json(publicConfig);
 });
 
@@ -422,14 +460,30 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
   if(!req.body || typeof req.body !== 'object'){
     return res.status(400).json({ error: 'Invalid config payload' });
   }
+  const existingAuth = data.config.auth;
   data.config = req.body;
+  // The admin panel never receives auth credentials back (write-only, for security),
+  // so make sure a routine "Save Changes" never wipes out custom logins already set.
+  if(existingAuth && !data.config.auth) data.config.auth = existingAuth;
+  saveData();
+  res.json({ ok: true });
+});
+
+app.post('/api/credentials', requireAdminAuth, (req, res) => {
+  const body = req.body || {};
+  if(!data.config.auth) data.config.auth = {};
+  ['adminUser','adminPassword','kitchenUser','kitchenPassword'].forEach(key => {
+    if(typeof body[key] === 'string' && body[key].trim()){
+      data.config.auth[key] = body[key].trim();
+    }
+  });
   saveData();
   res.json({ ok: true });
 });
 
 // ---- Orders ----
 // Listing all orders exposes customer names/phone numbers — staff only.
-app.get('/api/orders', requireAdminAuth, (req, res) => {
+app.get('/api/orders', requireKitchenAuth, (req, res) => {
   res.json(data.orders);
 });
 
@@ -681,7 +735,7 @@ app.get('/api/checkout/verify', async (req, res) => {
   }
 });
 
-app.patch('/api/orders/:id', requireAdminAuth, (req, res) => {
+app.patch('/api/orders/:id', requireKitchenAuth, (req, res) => {
   const idx = data.orders.findIndex(o => o.id === req.params.id);
   if(idx === -1) return res.status(404).json({ error: 'Order not found' });
   data.orders[idx] = { ...data.orders[idx], ...req.body };
@@ -690,7 +744,7 @@ app.patch('/api/orders/:id', requireAdminAuth, (req, res) => {
   res.json(data.orders[idx]);
 });
 
-app.delete('/api/orders/:id', requireAdminAuth, (req, res) => {
+app.delete('/api/orders/:id', requireKitchenAuth, (req, res) => {
   data.orders = data.orders.filter(o => o.id !== req.params.id);
   saveData();
   res.json({ ok: true });
