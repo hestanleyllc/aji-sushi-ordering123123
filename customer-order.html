@@ -2250,6 +2250,10 @@ function renderDrawer(showConfirm){
         <label>Phone Number</label>
         <input id="customerPhone" type="tel" placeholder="e.g. (555) 123-4567" />
       </div>
+      <div class="field">
+        <label>Email (for your pickup confirmation)</label>
+        <input id="customerEmail" type="email" placeholder="you@example.com" />
+      </div>
       <div class="field" id="deliveryAddressField" style="${orderMode==='delivery'?'':'display:none;'}">
         <label>Delivery Address</label>
         <input id="deliveryAddress" placeholder="Street, city, zip" />
@@ -2387,11 +2391,12 @@ function buildOrderPayload(){
   }));
   const name = document.getElementById('customerName').value;
   const phone = document.getElementById('customerPhone').value;
+  const email = document.getElementById('customerEmail').value;
   const note = document.getElementById('orderNote').value;
   const isDelivery = SITE.deliveryEnabled && orderMode === 'delivery';
   const deliveryAddress = isDelivery ? (document.getElementById('deliveryAddress').value || '') : '';
   return {
-    items, subtotal, tax, total, note, name, phone,
+    items, subtotal, tax, total, note, name, phone, email,
     location: isDelivery ? 'Delivery' : 'Pickup',
     deliveryAddress,
   };

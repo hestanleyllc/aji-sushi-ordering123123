@@ -33,6 +33,19 @@ function sendNewOrderEmail(order){
   }).catch(err => console.error('Failed to send order notification email', err));
 }
 
+function sendCustomerConfirmationEmail(order){
+  if(!mailTransporter || !order.email) return;
+  const restaurantName = (data.config.siteInfo && data.config.siteInfo.name) || 'Our Restaurant';
+  const itemLines = order.items.map(it => `  x${it.qty} ${it.name} ($${(it.price*it.qty).toFixed(2)})`).join('\n');
+  const text = `Hi ${order.name || 'there'},\n\nYour order #${order.num} at ${restaurantName} is confirmed!\n\n${order.location === 'Delivery' ? `Estimated delivery time: ${order.pickupTime}` : `Pickup time: ${order.pickupTime}`}\n\n${itemLines}\n\nSubtotal: $${Number(order.subtotal||order.total).toFixed(2)}\nTax: $${Number(order.tax||0).toFixed(2)}\nTotal: $${Number(order.total).toFixed(2)}\nPayment: ${order.paid ? 'Paid online' : 'Please pay in store'}\n\nThanks for your order!\n${restaurantName}`;
+  mailTransporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: order.email,
+    subject: `Your order #${order.num} at ${restaurantName} is confirmed`,
+    text,
+  }).catch(err => console.error('Failed to send customer confirmation email', err));
+}
+
 // ---- Printer (PrintNode) ----
 const PRINTNODE_API_KEY = process.env.PRINTNODE_API_KEY;
 const PRINTNODE_PRINTER_ID = process.env.PRINTNODE_PRINTER_ID; // default/general printer, used as fallback
@@ -125,18 +138,7 @@ async function printToPrinter(printerId, title, text){
   }
 }
 
-async function printOrderTicket(order){
-  if(!PRINTNODE_API_KEY) return;
-  const stations = (data.config.printStations || []).filter(s => s.printerId);
-
-  // No stations configured yet — keep the original single-ticket behavior.
-  if(stations.length === 0){
-    if(!PRINTNODE_PRINTER_ID) return;
-    await printToPrinter(PRINTNODE_PRINTER_ID, `Order #${order.num}`, buildReceiptText(order));
-    return;
-  }
-
-  // Split items across stations based on each item's printRouting rules.
+function groupOrderItemsByStation(order){
   const groups = {}; // stationName -> [{it, label}]
   const generalItems = [];
   order.items.forEach(it=>{
@@ -151,6 +153,21 @@ async function printOrderTicket(order){
       generalItems.push({ it, label: it.name });
     }
   });
+  return { groups, generalItems };
+}
+
+async function printOrderTicket(order){
+  if(!PRINTNODE_API_KEY) return;
+  const stations = (data.config.printStations || []).filter(s => s.printerId);
+
+  // No stations configured yet — keep the original single-ticket behavior.
+  if(stations.length === 0){
+    if(!PRINTNODE_PRINTER_ID) return;
+    await printToPrinter(PRINTNODE_PRINTER_ID, `Order #${order.num}`, buildReceiptText(order));
+    return;
+  }
+
+  const { groups, generalItems } = groupOrderItemsByStation(order);
 
   for(const stationName of Object.keys(groups)){
     const station = stations.find(s => s.name === stationName);
@@ -168,8 +185,38 @@ async function printOrderTicket(order){
   }
 }
 
+// ---- Free print bridge (alternative to PrintNode) ----
+// A small script (print-bridge.js) run on a computer connected to the printer polls
+// this queue and prints directly — no third-party subscription needed.
+const PRINT_BRIDGE_SECRET = process.env.PRINT_BRIDGE_SECRET || '';
+let printQueue = []; // {id, station, title, content(base64 escpos), createdAt}
+
+function queueFreePrintJobs(order){
+  if(!PRINT_BRIDGE_SECRET) return;
+  const { groups, generalItems } = groupOrderItemsByStation(order);
+  const stationNames = Object.keys(groups);
+  stationNames.forEach(name=>{
+    printQueue.push({
+      id: 'pj_' + Date.now() + '_' + Math.floor(Math.random() * 100000),
+      station: name,
+      title: `Order #${order.num} — ${name}`,
+      content: buildEscPosBuffer(buildStationReceiptText(order, name, groups[name])).toString('base64'),
+      createdAt: Date.now(),
+    });
+  });
+  if(generalItems.length){
+    printQueue.push({
+      id: 'pj_' + Date.now() + '_' + Math.floor(Math.random() * 100000) + '_g',
+      station: 'General',
+      title: `Order #${order.num} — General`,
+      content: buildEscPosBuffer(buildStationReceiptText(order, 'General', generalItems)).toString('base64'),
+      createdAt: Date.now(),
+    });
+  }
+}
+
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
@@ -488,6 +535,99 @@ app.post('/api/credentials', requireAdminAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- Import menu from a photo (uses the Anthropic API to read the image) ----
+app.post('/api/import-menu-photo', requireAdminAuth, async (req, res) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if(!apiKey){
+    return res.status(400).json({ error: 'Menu photo import is not enabled. Set ANTHROPIC_API_KEY in Render to enable it.' });
+  }
+  const { imageBase64, mediaType } = req.body || {};
+  if(!imageBase64){
+    return res.status(400).json({ error: 'No image was received.' });
+  }
+
+  const prompt = `You are reading a restaurant menu from a photo. Extract every category and dish you can clearly see, and reply with ONLY a valid JSON array (no markdown fences, no explanation before or after) in exactly this shape:
+[
+  {
+    "cat": "Category Name As Shown",
+    "items": [
+      { "name": "Dish Name", "desc": "Short description if shown, else empty string", "price": 12.5 }
+    ]
+  }
+]
+Rules:
+- "price" must be a plain number with no dollar sign. If a dish shows multiple prices (e.g. small/large), use the lower one and mention the sizes in "desc".
+- If no price is visible for an item, use 0.
+- Keep category names as they appear on the menu (title case is fine).
+- Do not invent items that are not actually visible in the photo.
+- Reply with ONLY the JSON array — nothing else.`;
+
+  try{
+    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    });
+    if(!apiRes.ok){
+      const errText = await apiRes.text();
+      console.error('Anthropic API error importing menu photo:', apiRes.status, errText);
+      return res.status(502).json({ error: 'The menu-reading service returned an error. Please try again, or try a clearer photo.' });
+    }
+    const apiData = await apiRes.json();
+    const textBlock = (apiData.content || []).find(b => b.type === 'text');
+    if(!textBlock){
+      return res.status(502).json({ error: 'No readable response from the menu-reading service.' });
+    }
+    let cleaned = textBlock.text.trim();
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    let parsedMenu;
+    try{
+      parsedMenu = JSON.parse(cleaned);
+    }catch(e){
+      console.error('Could not parse menu JSON from model response:', cleaned);
+      return res.status(502).json({ error: 'Could not understand the menu photo. Try a clearer, better-lit photo of one menu page at a time.' });
+    }
+    if(!Array.isArray(parsedMenu)){
+      return res.status(502).json({ error: 'Unexpected response format from the menu-reading service.' });
+    }
+
+    const normalized = parsedMenu.map(sec => ({
+      cat: (sec && sec.cat) ? String(sec.cat) : 'Imported',
+      orderWindow: { enabled: false, start: '11:00', end: '15:00' },
+      items: Array.isArray(sec && sec.items) ? sec.items.map(it => ({
+        id: 'd_' + Date.now() + '_' + Math.floor(Math.random() * 1000000),
+        name: (it && it.name) ? String(it.name) : 'Untitled Dish',
+        desc: (it && it.desc) ? String(it.desc) : '',
+        price: Number(it && it.price) || 0,
+        soldOut: false,
+        hot: false,
+        optionGroups: [],
+        printRouting: [],
+      })) : [],
+    }));
+
+    res.json({ ok: true, menu: normalized });
+  }catch(e){
+    console.error('Menu photo import failed:', e);
+    res.status(500).json({ error: 'Something went wrong reading the photo. Please try again.' });
+  }
+});
+
 // ---- Orders ----
 // Listing all orders exposes customer names/phone numbers — staff only.
 app.get('/api/orders', requireKitchenAuth, (req, res) => {
@@ -647,6 +787,7 @@ function createOrder(body, extra){
     note: body.note || '',
     name: body.name || '',
     phone: body.phone || '',
+    email: body.email || '',
     location: body.location || 'Pickup',
     deliveryAddress: body.deliveryAddress || '',
     status: 'pending',
@@ -660,6 +801,7 @@ function createOrder(body, extra){
   broadcast('new-order', { order });
   sendNewOrderEmail(order);
   printOrderTicket(order);
+  queueFreePrintJobs(order);
   return order;
 }
 
@@ -745,15 +887,39 @@ app.get('/api/checkout/verify', async (req, res) => {
 app.patch('/api/orders/:id', requireKitchenAuth, (req, res) => {
   const idx = data.orders.findIndex(o => o.id === req.params.id);
   if(idx === -1) return res.status(404).json({ error: 'Order not found' });
+  const wasConfirmed = data.orders[idx].status === 'confirmed';
   data.orders[idx] = { ...data.orders[idx], ...req.body };
   saveData();
   broadcast('order-updated', { order: data.orders[idx] });
+  if(!wasConfirmed && data.orders[idx].status === 'confirmed'){
+    sendCustomerConfirmationEmail(data.orders[idx]);
+  }
   res.json(data.orders[idx]);
 });
 
 app.delete('/api/orders/:id', requireKitchenAuth, (req, res) => {
   data.orders = data.orders.filter(o => o.id !== req.params.id);
   saveData();
+  res.json({ ok: true });
+});
+
+// ---- Free print bridge API ----
+// The local print-bridge.js script polls this to pick up new tickets and prints
+// them directly, no PrintNode subscription required. Protected by a shared
+// secret (set PRINT_BRIDGE_SECRET in Render) instead of the staff login, since
+// this is machine-to-machine, not a person in a browser.
+app.get('/api/print-queue', (req, res) => {
+  if(!PRINT_BRIDGE_SECRET || req.query.secret !== PRINT_BRIDGE_SECRET){
+    return res.status(401).json({ error: 'invalid_secret' });
+  }
+  res.json(printQueue);
+});
+
+app.post('/api/print-queue/:id/ack', (req, res) => {
+  if(!PRINT_BRIDGE_SECRET || req.query.secret !== PRINT_BRIDGE_SECRET){
+    return res.status(401).json({ error: 'invalid_secret' });
+  }
+  printQueue = printQueue.filter(j => j.id !== req.params.id);
   res.json({ ok: true });
 });
 
@@ -764,6 +930,9 @@ setInterval(() => {
   const before = data.orders.length;
   data.orders = data.orders.filter(o => o.createdAt > cutoff);
   if(data.orders.length !== before) saveData();
+  // Also drop print-queue jobs nobody has picked up in 6h (bridge offline too long).
+  const printCutoff = Date.now() - 6 * 60 * 60 * 1000;
+  printQueue = printQueue.filter(j => j.createdAt > printCutoff);
 }, 60 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
