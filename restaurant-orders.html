@@ -269,13 +269,26 @@ function computePickupLabel(sel){
   return null;
 }
 
+function computePickupTimestamp(sel){
+  if(!sel) return null;
+  if(sel.customTime){
+    const [h,m] = sel.customTime.split(':').map(Number);
+    const d = new Date(); d.setHours(h,m,0,0);
+    return d.getTime();
+  }
+  if(sel.offsetMinutes){
+    return Date.now() + sel.offsetMinutes*60000;
+  }
+  return null;
+}
+
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 const QUICK_MINUTES = [10,15,20,30,45,60];
 let hasPendingOrders = false;
-let expandedHistoryIds = new Set();
+let historyOverrides = {}; // orderId -> true (force expanded) | false (force collapsed)
 
 function formatClockTime(ts){
   return new Date(ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
@@ -334,7 +347,14 @@ async function renderKitchen(){
       groups[col.key].forEach(o=>{
         const isFresh = col.key==='pending' && (Date.now()-o.createdAt < 60000);
         const isHistory = col.key !== 'pending';
-        const isExpanded = !isHistory || expandedHistoryIds.has(o.id);
+        let isExpanded;
+        if(!isHistory){
+          isExpanded = true;
+        } else if(Object.prototype.hasOwnProperty.call(historyOverrides, o.id)){
+          isExpanded = historyOverrides[o.id];
+        } else {
+          isExpanded = !!(o.pickupTimestamp && Date.now() < o.pickupTimestamp);
+        }
 
         if(isHistory && !isExpanded){
           // Compact one-line view for already-confirmed orders — tap to see full details.
@@ -440,13 +460,13 @@ async function renderKitchen(){
   // confirm pickup time -> sends time to customer, moves order to History, stops the alarm
   el.querySelectorAll('[data-toggle-id]').forEach(card=>{
     card.onclick = ()=>{
-      expandedHistoryIds.add(card.dataset.toggleId);
+      historyOverrides[card.dataset.toggleId] = true;
       renderKitchen();
     };
   });
   el.querySelectorAll('[data-collapse-id]').forEach(btn=>{
     btn.onclick = ()=>{
-      expandedHistoryIds.delete(btn.dataset.collapseId);
+      historyOverrides[btn.dataset.collapseId] = false;
       renderKitchen();
     };
   });
@@ -464,7 +484,7 @@ async function renderKitchen(){
         const res = await fetch('/api/orders/'+id, {
           method:'PATCH',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({status:'confirmed', pickupTime:label, confirmedAt: Date.now()})
+          body: JSON.stringify({status:'confirmed', pickupTime:label, pickupTimestamp: computePickupTimestamp(sel), confirmedAt: Date.now()})
         });
         if(res.status === 401){
           window.location.href = '/staff-login.html?redirect=' + encodeURIComponent(window.location.pathname);
