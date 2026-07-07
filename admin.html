@@ -54,6 +54,7 @@
   }
   .dish-row.dragging{opacity:0.35;}
   .drag-handle{cursor:grab;font-size:16px;color:#8a7a52;padding:0 2px;user-select:none;}
+  .cat-drag-handle{font-size:20px;color:var(--mustard);padding:0 6px;}
   .drag-hint{font-size:11px;color:#8a7a52;margin-bottom:10px;font-style:italic;}
   .cat-card{transition:background 0.15s, box-shadow 0.15s;}
   .cat-card.drag-over{background:#4a4638;box-shadow:0 0 0 2px var(--mustard) inset;}
@@ -1940,6 +1941,7 @@ function renderMenu(){
     const ow = sec.orderWindow || { enabled:false, start:'11:00', end:'15:00' };
     html += `<div class="cat-card" data-cat-index="${ci}">
       <div class="cat-title-row">
+        <span class="drag-handle cat-drag-handle" draggable="true" data-ci="${ci}" title="Drag to reorder categories">⠿</span>
         <div class="cat-move-btns">
           <button data-act="moveCatUp" data-ci="${ci}" ${ci===0?'disabled':''}>▲</button>
           <button data-act="moveCatDown" data-ci="${ci}" ${ci===state.menu.length-1?'disabled':''}>▼</button>
@@ -2023,6 +2025,7 @@ function renderMenu(){
 }
 
 let dragSource = null;
+let catDragSource = null;
 
 function bindMenuEvents(){
   document.querySelectorAll('.dish-row[draggable]').forEach(row=>{
@@ -2041,9 +2044,23 @@ function bindMenuEvents(){
     });
   });
 
+  document.querySelectorAll('.cat-drag-handle').forEach(handle=>{
+    handle.addEventListener('dragstart', (e)=>{
+      catDragSource = Number(handle.dataset.ci);
+      if(e.dataTransfer){
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'cat:' + catDragSource);
+      }
+    });
+    handle.addEventListener('dragend', ()=>{
+      document.querySelectorAll('.cat-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+      catDragSource = null;
+    });
+  });
+
   document.querySelectorAll('.cat-card').forEach(card=>{
     card.addEventListener('dragover', (e)=>{
-      if(!dragSource) return;
+      if(!dragSource && catDragSource === null) return;
       e.preventDefault();
       card.classList.add('drag-over');
     });
@@ -2053,13 +2070,22 @@ function bindMenuEvents(){
     card.addEventListener('drop', (e)=>{
       e.preventDefault();
       card.classList.remove('drag-over');
-      if(!dragSource) return;
       const targetCi = Number(card.dataset.catIndex);
-      if(targetCi === dragSource.ci){ dragSource = null; return; }
-      const [movedItem] = state.menu[dragSource.ci].items.splice(dragSource.di, 1);
-      state.menu[targetCi].items.push(movedItem);
-      dragSource = null;
-      renderMenu();
+      if(dragSource){
+        if(targetCi === dragSource.ci){ dragSource = null; return; }
+        const [movedItem] = state.menu[dragSource.ci].items.splice(dragSource.di, 1);
+        state.menu[targetCi].items.push(movedItem);
+        dragSource = null;
+        renderMenu();
+      } else if(catDragSource !== null){
+        if(targetCi === catDragSource){ catDragSource = null; return; }
+        const [movedCat] = state.menu.splice(catDragSource, 1);
+        let insertAt = targetCi;
+        if(catDragSource < targetCi) insertAt -= 1;
+        state.menu.splice(insertAt, 0, movedCat);
+        catDragSource = null;
+        renderMenu();
+      }
     });
   });
 
