@@ -1871,13 +1871,14 @@ function renderStations(){
   const stations = state.printStations || [];
   el.innerHTML = `
     <div style="font-size:11px;color:#7a6c46;margin-bottom:10px;">
-      Set up one printer per kitchen station (e.g. "Kitchen", "Sushi Bar"). Get each Printer ID from your PrintNode dashboard.
-      Dishes without any print routing rule below will keep printing to your default printer (PRINTNODE_PRINTER_ID) as before.
+      Set up one printer per kitchen station (e.g. "Kitchen", "Sushi Bar"). Fill in a PrintNode Printer ID if using PrintNode, and/or a Local Network IP if using direct network printing (Epson ePOS) — you can use either or both.
+      Dishes without any print routing rule below will print to your default printer instead.
     </div>
     ${stations.map((st,si)=>`
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
         <input type="text" class="station-name" data-si="${si}" value="${escapeHtml(st.name)}" placeholder="Station name (e.g. Kitchen)" style="flex:1;min-width:140px;padding:8px;border-radius:6px;border:1px solid #cbbd94;">
-        <input type="text" class="station-printerid" data-si="${si}" value="${escapeHtml(st.printerId||'')}" placeholder="PrintNode Printer ID" style="flex:1;min-width:140px;padding:8px;border-radius:6px;border:1px solid #cbbd94;">
+        <input type="text" class="station-printerid" data-si="${si}" value="${escapeHtml(st.printerId||'')}" placeholder="PrintNode Printer ID (optional)" style="flex:1;min-width:140px;padding:8px;border-radius:6px;border:1px solid #cbbd94;">
+        <input type="text" class="station-ip" data-si="${si}" value="${escapeHtml(st.ip||'')}" placeholder="Local Network IP (optional, e.g. 192.168.1.50)" style="flex:1;min-width:180px;padding:8px;border-radius:6px;border:1px solid #cbbd94;">
         <button class="icon-btn del" data-act="delStation" data-si="${si}">Delete</button>
       </div>`).join('')}
     <button class="add-dish-btn" id="addStationBtn">+ Add Printer Station</button>
@@ -1888,11 +1889,14 @@ function renderStations(){
   el.querySelectorAll('.station-printerid').forEach(inp=>{
     inp.oninput = ()=>{ state.printStations[inp.dataset.si].printerId = inp.value; };
   });
+  el.querySelectorAll('.station-ip').forEach(inp=>{
+    inp.oninput = ()=>{ state.printStations[inp.dataset.si].ip = inp.value.trim(); };
+  });
   el.querySelectorAll('[data-act="delStation"]').forEach(btn=>{
     btn.onclick = ()=>{ state.printStations.splice(btn.dataset.si,1); renderStations(); renderMenu(); };
   });
   document.getElementById('addStationBtn').onclick = ()=>{
-    state.printStations.push({ id: sid(), name:'New Station', printerId:'' });
+    state.printStations.push({ id: sid(), name:'New Station', printerId:'', ip:'' });
     renderStations();
   };
 }

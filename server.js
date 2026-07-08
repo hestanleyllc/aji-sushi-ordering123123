@@ -440,7 +440,7 @@ if(useUpstash){
 }
 
 function freshData(){
-  return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 } };
+  return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 }, knownCustomers: {} };
 }
 
 async function loadData(){
@@ -455,6 +455,7 @@ async function loadData(){
         if(!parsed.config) parsed.config = DEFAULT_CONFIG;
         if(!parsed.orders) parsed.orders = [];
         if(!parsed.dailyOrderCounter) parsed.dailyOrderCounter = { date: '', count: 0 };
+        if(!parsed.knownCustomers) parsed.knownCustomers = {};
         return parsed;
       }
     }catch(e){ console.error('Failed to load from Upstash', e); }
@@ -466,6 +467,7 @@ async function loadData(){
     if(!parsed.config) parsed.config = DEFAULT_CONFIG;
     if(!parsed.orders) parsed.orders = [];
     if(!parsed.dailyOrderCounter) parsed.dailyOrderCounter = { date: '', count: 0 };
+    if(!parsed.knownCustomers) parsed.knownCustomers = {};
     return parsed;
   }catch(e){
     return freshData();
@@ -506,7 +508,9 @@ app.get('/api/config', (req, res) => {
   const publicConfig = JSON.parse(JSON.stringify(data.config));
   if(publicConfig.siteInfo) delete publicConfig.siteInfo.notifyEmail;
   if(publicConfig.siteInfo) publicConfig.siteInfo.onlinePaymentEnabled = !!stripe;
-  delete publicConfig.printStations;
+  // printStations is kept (station names + local IPs aren't sensitive, and the
+  // kitchen board needs them for direct network printing). PrintNode IDs are
+  // only meaningful with the (secret) PRINTNODE_API_KEY anyway.
   delete publicConfig.auth;
   res.json(publicConfig);
 });
@@ -777,7 +781,23 @@ function validateOrderPayload(body){
   return null;
 }
 
+function normalizeCustomerKey(phone, email){
+  const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+  if(cleanPhone) return 'p:' + cleanPhone;
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if(cleanEmail) return 'e:' + cleanEmail;
+  return null;
+}
+
 function createOrder(body, extra){
+  const customerKey = normalizeCustomerKey(body.phone, body.email);
+  let isNewCustomer = false;
+  if(customerKey){
+    if(!data.knownCustomers[customerKey]){
+      isNewCustomer = true;
+      data.knownCustomers[customerKey] = Date.now();
+    }
+  }
   const order = {
     id: 'o_' + Date.now() + '_' + Math.floor(Math.random() * 100000),
     num: nextOrderNumber(),
@@ -796,6 +816,7 @@ function createOrder(body, extra){
     createdAt: Date.now(),
     paid: !!(extra && extra.paid),
     paymentMethod: (extra && extra.paymentMethod) || 'in_store',
+    isNewCustomer,
   };
   data.orders.push(order);
   saveData();
