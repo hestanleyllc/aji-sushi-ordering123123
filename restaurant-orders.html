@@ -525,7 +525,7 @@ async function renderKitchen(){
   });
   html += `</div>`;
   el.innerHTML = html;
-  document.getElementById('lastRefresh').textContent = 'Last refreshed '+new Date().toLocaleTimeString('en-US');
+  document.getElementById('lastRefresh').textContent = 'Last refreshed '+new Date().toLocaleTimeString('en-US')+' — Printer IP: '+((window.SITE_INFO && window.SITE_INFO.localPrinterIp) ? window.SITE_INFO.localPrinterIp : 'not set');
 
   const soundBtn = document.getElementById('soundToggle');
   soundBtn.textContent = soundEnabled ? '🔔 Sound On' : '🔕 Sound Off';
