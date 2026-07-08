@@ -288,6 +288,102 @@ function escapeHtml(str){
 
 const QUICK_MINUTES = [10,15,20,30,45,60];
 let hasPendingOrders = false;
+let networkPrintAttempted = new Set(); // order ids we've already tried to auto-print
+let networkPrintStatus = {}; // order id -> {ok, reason}
+let lastOrdersList = [];
+
+function eposEscape(str){
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function buildEposXml(order){
+  const lines = [];
+  lines.push(`<text align="center"/>`);
+  lines.push(`<text>${eposEscape((document.getElementById('brandName')||{}).textContent || '')}</text>`);
+  lines.push(`<text align="left"/>`);
+  lines.push(`<text>--------------------------------</text>`);
+  lines.push(`<text>Order #${order.num}</text>`);
+  lines.push(`<text>${eposEscape(order.location)}${order.deliveryAddress ? ' - '+eposEscape(order.deliveryAddress) : ''}</text>`);
+  if(order.name || order.phone){
+    lines.push(`<text>${eposEscape(order.name||'')}${order.name && order.phone ? ' - ' : ''}${eposEscape(order.phone||'')}</text>`);
+  }
+  lines.push(`<text>--------------------------------</text>`);
+  order.items.forEach(it=>{
+    lines.push(`<text>x${it.qty} ${eposEscape(it.name)}  $${(it.price*it.qty).toFixed(2)}</text>`);
+    if(it.options){
+      Object.entries(it.options).forEach(([k,v])=>{
+        if(!v) return;
+        if(Array.isArray(v)){
+          lines.push(`<text>  ${eposEscape(k)}:</text>`);
+          v.forEach(x=>lines.push(`<text>    - ${eposEscape(x)}</text>`));
+        } else {
+          lines.push(`<text>  ${eposEscape(k)}: ${eposEscape(v)}</text>`);
+        }
+      });
+    }
+    if(it.note) lines.push(`<text>  Note: ${eposEscape(it.note)}</text>`);
+  });
+  lines.push(`<text>--------------------------------</text>`);
+  lines.push(`<text>Subtotal: $${Number(order.subtotal||order.total).toFixed(2)}</text>`);
+  lines.push(`<text>Tax: $${Number(order.tax||0).toFixed(2)}</text>`);
+  lines.push(`<text>Total: $${Number(order.total).toFixed(2)}</text>`);
+  lines.push(`<text>${order.paid ? 'PAID ONLINE' : 'Pay in store'}</text>`);
+  if(order.note) lines.push(`<text>Order note: ${eposEscape(order.note)}</text>`);
+  lines.push(`<feed line="3"/>`);
+  lines.push(`<cut type="feed"/>`);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+      ${lines.join('\n      ')}
+    </epos-print>
+  </s:Body>
+</s:Envelope>`;
+}
+
+async function printOrderToLocalNetwork(order){
+  const ip = (window.SITE_INFO && window.SITE_INFO.localPrinterIp) ? window.SITE_INFO.localPrinterIp.trim() : '';
+  if(!ip) return { ok:false, reason:'no_ip_configured' };
+  const xml = buildEposXml(order);
+  try{
+    const res = await fetch(`http://${ip}/cgi-bin/epos/service.cgi?devid=local_printer&timeout=10000`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': '""' },
+      body: xml,
+    });
+    if(!res.ok) return { ok:false, reason: 'http_'+res.status };
+    return { ok:true };
+  }catch(e){
+    return { ok:false, reason: (e && e.message) ? e.message : 'network_error' };
+  }
+}
+
+async function attemptNetworkPrint(order){
+  networkPrintAttempted.add(order.id);
+  const result = await printOrderToLocalNetwork(order);
+  networkPrintStatus[order.id] = result;
+  if(!result.ok) console.warn('Network print failed for order #' + order.num, result.reason);
+  renderKitchen();
+}
+
+function renderPrintStatus(order){
+  const ip = (window.SITE_INFO && window.SITE_INFO.localPrinterIp) ? window.SITE_INFO.localPrinterIp.trim() : '';
+  if(!ip) return '';
+  const status = networkPrintStatus[order.id];
+  if(!status){
+    return `<div class="ticket-actions"><button class="tk-btn collapse-btn" data-print-id="${order.id}" style="background:var(--chrome);color:var(--ink);width:100%;">🖨 Print</button></div>`;
+  }
+  if(status.ok){
+    return `<div style="font-size:11px;color:var(--grill-green);font-weight:700;margin-top:4px;">✓ Sent to printer</div>`;
+  }
+  return `<div class="ticket-actions">
+    <div style="font-size:11px;color:var(--diner-red);font-weight:700;margin-bottom:4px;">✗ Print failed (${escapeHtml(status.reason||'error')})</div>
+    <button class="tk-btn collapse-btn" data-print-id="${order.id}" style="background:var(--chrome);color:var(--ink);width:100%;">🖨 Retry Print</button>
+  </div>`;
+}
+
+
 let historyOverrides = {}; // orderId -> true (force expanded) | false (force collapsed)
 
 function formatClockTime(ts){
@@ -309,9 +405,11 @@ async function renderKitchen(){
   }
 
   const currentIds = new Set(list.map(o=>o.id));
+  lastOrdersList = list;
   if(!firstLoad){
-    const hasNew = list.some(o=>!knownOrderIds.has(o.id));
-    if(hasNew) playLoudAlarm();
+    const newOrders = list.filter(o=>!knownOrderIds.has(o.id));
+    if(newOrders.length) playLoudAlarm();
+    newOrders.forEach(o=>{ if(!networkPrintAttempted.has(o.id)) attemptNetworkPrint(o); });
   }
   knownOrderIds = currentIds;
   firstLoad = false;
@@ -418,6 +516,7 @@ async function renderKitchen(){
           ${o.subtotal!=null ? `<div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;"><span>Subtotal</span><span>$${Number(o.subtotal).toFixed(2)}</span></div>
           <div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;margin-bottom:2px;"><span>Tax</span><span>$${Number(o.tax||0).toFixed(2)}</span></div>` : ''}
           <div class="ticket-total"><span>Total ${o.paid ? '· PAID ONLINE ✅' : '(pay in store)'}</span><span>$${Number(o.total).toFixed(2)}</span></div>
+          ${renderPrintStatus(o)}
           ${bodyHtml}
         </div>`;
       });
@@ -468,6 +567,13 @@ async function renderKitchen(){
     btn.onclick = ()=>{
       historyOverrides[btn.dataset.collapseId] = false;
       renderKitchen();
+    };
+  });
+  el.querySelectorAll('[data-print-id]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.printId;
+      const order = lastOrdersList.find(o=>o.id===id);
+      if(order) attemptNetworkPrint(order);
     };
   });
   el.querySelectorAll('.tk-btn.confirm').forEach(btn=>{
@@ -527,6 +633,7 @@ async function loadSiteInfo(){
       if(cfg.siteInfo){
         document.getElementById('brandName').textContent = cfg.siteInfo.name || 'MAPLE & MAIN';
         document.getElementById('brandTag').textContent = cfg.siteInfo.tagline || '';
+        window.SITE_INFO = cfg.siteInfo;
       }
     }
   }catch(e){}

@@ -1803,6 +1803,10 @@ function renderSite(){
         <input type="checkbox" id="deliveryEnabled" style="width:auto;flex:none;" ${state.siteInfo.deliveryEnabled?'checked':''}> Offer delivery (adds a Delivery option next to Pickup)
       </label>
     </div>
+    <div class="field">
+      <label>Kitchen Printer Local IP (for direct network printing, e.g. 192.168.1.50)</label>
+      <input id="localPrinterIp" value="${escapeHtml(state.siteInfo.localPrinterIp||'')}" placeholder="192.168.1.50">
+    </div>
   `;
   document.getElementById('siteName').oninput = (e)=>{ state.siteInfo.name = e.target.value; };
   document.getElementById('siteTagline').oninput = (e)=>{ state.siteInfo.tagline = e.target.value; };
@@ -1813,6 +1817,7 @@ function renderSite(){
   document.getElementById('notifyEmail').oninput = (e)=>{ state.siteInfo.notifyEmail = e.target.value; };
   document.getElementById('taxRate').oninput = (e)=>{ state.siteInfo.taxRate = Number(e.target.value)||0; };
   document.getElementById('deliveryEnabled').onchange = (e)=>{ state.siteInfo.deliveryEnabled = e.target.checked; };
+  document.getElementById('localPrinterIp').oninput = (e)=>{ state.siteInfo.localPrinterIp = e.target.value.trim(); };
 }
 
 function renderSeo(){

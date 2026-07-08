@@ -404,6 +404,7 @@ const DEFAULT_CONFIG = {
     notifyEmail: '',
     taxRate: 8.375,
     deliveryEnabled: false,
+    localPrinterIp: '',
     orderingHours: {
       timezone: 'America/New_York',
       schedule: {
