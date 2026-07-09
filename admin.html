@@ -27,7 +27,7 @@
   .brand small{color:var(--mustard);font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:600;}
   .brand strong{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.5px;}
   .warn{font-size:11px;color:var(--muted);}
-  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 100px;background:var(--steel);}
+  .wrap{max-width:1440px;margin:0 auto;padding:20px 24px 100px;background:var(--steel);}
   h2{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;color:var(--mustard);margin:26px 0 12px;display:flex;align-items:center;gap:10px;}
   h2::after{content:'';flex:1;height:1px;background:var(--steel-line);}
   .card{background:var(--cream);color:var(--ink);border-radius:10px;padding:16px;margin-bottom:14px;}
@@ -37,10 +37,37 @@
     width:100%;margin-top:5px;padding:9px;border-radius:6px;border:1px solid #cbbd94;
     background:#fff;font-family:'Inter',sans-serif;font-size:14px;
   }
+  .menu-layout{display:flex;gap:20px;align-items:flex-start;}
+  .menu-sidebar{
+    width:260px;flex:none;position:sticky;top:16px;
+    max-height:calc(100vh - 32px);overflow-y:auto;
+    background:#343330;border:1px solid var(--steel-line);border-radius:10px;padding:12px;
+  }
+  .menu-sidebar-addbtn{
+    width:100%;padding:10px;border-radius:8px;border:1px dashed var(--mustard);background:transparent;
+    color:var(--mustard);font-size:12.5px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;
+    margin-bottom:10px;
+  }
+  .cat-sidebar-item{
+    display:flex;align-items:center;gap:6px;padding:9px 8px;border-radius:8px;cursor:pointer;
+    margin-bottom:3px;transition:background 0.15s;
+  }
+  .cat-sidebar-item:hover{background:#413e37;}
+  .cat-sidebar-item.active{background:var(--mustard);}
+  .cat-sidebar-item.active .cat-sidebar-name, .cat-sidebar-item.active .cat-sidebar-count{color:var(--ink);}
+  .cat-sidebar-item.drag-over{box-shadow:0 0 0 2px var(--mustard) inset;background:#4a4638;}
+  .cat-sidebar-name{flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cat-sidebar-count{font-size:11px;color:var(--chrome);flex:none;}
+  .cat-sidebar-drag{cursor:grab;color:var(--chrome);font-size:14px;flex:none;user-select:none;}
+  .menu-content{flex:1;min-width:0;}
+  @media(max-width:900px){
+    .menu-layout{flex-direction:column;}
+    .menu-sidebar{width:100%;position:static;max-height:none;}
+  }
   .cat-card{background:#343330;border:1px solid var(--steel-line);border-radius:10px;padding:14px;margin-bottom:16px;}
-  .cat-title-row{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+  .cat-title-row{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
   .cat-title-row input{
-    flex:1;padding:9px;border-radius:6px;border:1px solid var(--steel-line);background:var(--steel);
+    flex:1;min-width:160px;padding:9px;border-radius:6px;border:1px solid var(--steel-line);background:var(--steel);
     color:var(--cream);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.5px;
   }
   .icon-btn{
@@ -49,16 +76,17 @@
   }
   .icon-btn.del{background:#5c2b28;color:#ffb4ac;}
   .dish-row{
-    display:grid;grid-template-columns:auto 1.3fr 1.6fr 80px auto auto auto auto auto;gap:8px;align-items:center;
-    background:var(--cream);border-radius:8px;padding:8px;margin-bottom:8px;cursor:grab;
+    display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+    background:var(--cream);border-radius:8px;padding:10px;margin-bottom:8px;cursor:grab;
   }
+  .dish-row input[type="text"]{flex:1 1 200px;min-width:140px;}
+  .dish-row input[type="number"]{flex:0 0 80px;width:80px;}
   .dish-row.dragging{opacity:0.35;}
   .drag-handle{cursor:grab;font-size:16px;color:#8a7a52;padding:0 2px;user-select:none;}
-  .cat-drag-handle{font-size:20px;color:var(--mustard);padding:0 6px;}
+  .cat-drag-handle{font-size:18px;color:var(--mustard);padding:0 2px;}
   .drag-hint{font-size:11px;color:#8a7a52;margin-bottom:10px;font-style:italic;}
   .cat-card{transition:background 0.15s, box-shadow 0.15s;}
   .cat-card.drag-over{background:#4a4638;box-shadow:0 0 0 2px var(--mustard) inset;}
-  @media(max-width:640px){ .dish-row{grid-template-columns:1fr 1fr;} }
   .dish-row input[type="text"], .dish-row input[type="number"]{
     padding:8px;border-radius:6px;border:1px solid #cbbd94;background:#fff;color:var(--ink);font-size:13px;
   }
@@ -141,8 +169,13 @@
 
   <h2>Menu</h2>
   <button class="add-cat-btn" id="loadFullMenuBtn" style="border-color:var(--diner-red);color:var(--diner-red);margin-bottom:12px;">⚠️ Load Full Menu (201 items) — replaces everything below</button>
-  <div id="menuList"></div>
-  <button class="add-cat-btn" id="addCatBtn">+ Add Category</button>
+  <div class="menu-layout">
+    <div class="menu-sidebar">
+      <button class="menu-sidebar-addbtn" id="addCatBtn">+ Add Category</button>
+      <div id="catSidebarList"></div>
+    </div>
+    <div class="menu-content" id="menuList"></div>
+  </div>
 </div>
 
 <div class="save-bar">
@@ -2749,59 +2782,74 @@ function renderCredentials(){
   };
 }
 
+let activeCatIndex = 0;
+
 function renderMenu(){
+  if(activeCatIndex >= state.menu.length) activeCatIndex = Math.max(0, state.menu.length-1);
+
+  const sideEl = document.getElementById('catSidebarList');
+  let sideHtml = '';
+  state.menu.forEach((sec, ci)=>{
+    sideHtml += `<div class="cat-sidebar-item ${ci===activeCatIndex?'active':''}" data-cat-index="${ci}">
+      <span class="cat-sidebar-drag" draggable="true" data-ci="${ci}" title="Drag to reorder">⠿</span>
+      <span class="cat-sidebar-name" data-select-ci="${ci}">${escapeHtml(sec.cat)}</span>
+      <span class="cat-sidebar-count">${sec.items.length}</span>
+    </div>`;
+  });
+  sideEl.innerHTML = sideHtml;
+
   const el = document.getElementById('menuList');
   let html = '';
-  state.menu.forEach((sec, ci)=>{
-    const ow = sec.orderWindow || { enabled:false, start:'11:00', end:'15:00' };
-    html += `<div class="cat-card" data-cat-index="${ci}">
-      <div class="cat-title-row">
-        <span class="drag-handle cat-drag-handle" draggable="true" data-ci="${ci}" title="Drag to reorder categories">⠿</span>
-        <div class="cat-move-btns">
-          <button data-act="moveCatUp" data-ci="${ci}" ${ci===0?'disabled':''}>▲</button>
-          <button data-act="moveCatDown" data-ci="${ci}" ${ci===state.menu.length-1?'disabled':''}>▼</button>
+  const sec = state.menu[activeCatIndex];
+  if(!sec){
+    el.innerHTML = '<div style="color:var(--chrome);font-size:13px;padding:20px;">No categories yet — click "+ Add Category" to start.</div>';
+    return;
+  }
+  const ci = activeCatIndex;
+  const ow = sec.orderWindow || { enabled:false, start:'11:00', end:'15:00' };
+  html += `<div class="cat-card" data-cat-index="${ci}">
+    <div class="cat-title-row">
+      <input type="text" class="cat-name" data-ci="${ci}" value="${escapeHtml(sec.cat)}">
+      <button class="icon-btn del" data-act="delCat" data-ci="${ci}">Delete Category</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#3d3a34;border-radius:8px;padding:8px 10px;margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--cream);">
+        <input type="checkbox" class="cat-window-enabled" data-ci="${ci}" ${ow.enabled?'checked':''}> Limit ordering hours for this category
+      </label>
+      <input type="time" class="cat-window-start" data-ci="${ci}" value="${ow.start||'11:00'}" ${ow.enabled?'':'disabled'} style="padding:5px;border-radius:6px;border:1px solid #cbbd94;">
+      <span style="font-size:12px;color:var(--muted);">to</span>
+      <input type="time" class="cat-window-end" data-ci="${ci}" value="${ow.end||'15:00'}" ${ow.enabled?'':'disabled'} style="padding:5px;border-radius:6px;border:1px solid #cbbd94;">
+    </div>
+    <div class="drag-hint">⠿ Drag any dish below onto a category in the sidebar to move it there</div>`;
+  sec.items.forEach((it, di)=>{
+    const groups = it.optionGroups || [];
+    const routing = it.printRouting || [];
+    const isOpen = !!openOptionsFor[it.id];
+    const isRoutingOpen = !!openRoutingFor[it.id];
+    html += `
+      <div class="dish-row" draggable="true" data-ci="${ci}" data-di="${di}">
+        <div class="move-btns">
+          <span class="drag-handle" title="Drag to move to another category">⠿</span>
+          <button data-act="moveDishUp" data-ci="${ci}" data-di="${di}" ${di===0?'disabled':''}>▲</button>
+          <button data-act="moveDishDown" data-ci="${ci}" data-di="${di}" ${di===sec.items.length-1?'disabled':''}>▼</button>
         </div>
-        <input type="text" class="cat-name" data-ci="${ci}" value="${escapeHtml(sec.cat)}">
-        <button class="icon-btn del" data-act="delCat" data-ci="${ci}">Delete Category</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#3d3a34;border-radius:8px;padding:8px 10px;margin-bottom:12px;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--cream);">
-          <input type="checkbox" class="cat-window-enabled" data-ci="${ci}" ${ow.enabled?'checked':''}> Limit ordering hours for this category
-        </label>
-        <input type="time" class="cat-window-start" data-ci="${ci}" value="${ow.start||'11:00'}" ${ow.enabled?'':'disabled'} style="padding:5px;border-radius:6px;border:1px solid #cbbd94;">
-        <span style="font-size:12px;color:var(--muted);">to</span>
-        <input type="time" class="cat-window-end" data-ci="${ci}" value="${ow.end||'15:00'}" ${ow.enabled?'':'disabled'} style="padding:5px;border-radius:6px;border:1px solid #cbbd94;">
-      </div>
-      <div class="drag-hint">⠿ Drag any dish below onto a different category card to move it there</div>`;
-    sec.items.forEach((it, di)=>{
-      const groups = it.optionGroups || [];
-      const routing = it.printRouting || [];
-      const isOpen = !!openOptionsFor[it.id];
-      const isRoutingOpen = !!openRoutingFor[it.id];
-      html += `
-        <div class="dish-row" draggable="true" data-ci="${ci}" data-di="${di}">
-          <div class="move-btns">
-            <span class="drag-handle" title="Drag to move to another category">⠿</span>
-            <button data-act="moveDishUp" data-ci="${ci}" data-di="${di}" ${di===0?'disabled':''}>▲</button>
-            <button data-act="moveDishDown" data-ci="${ci}" data-di="${di}" ${di===sec.items.length-1?'disabled':''}>▼</button>
-          </div>
-          <input type="text" data-ci="${ci}" data-di="${di}" data-field="name" value="${escapeHtml(it.name)}" placeholder="Dish name">
-          <input type="text" data-ci="${ci}" data-di="${di}" data-field="desc" value="${escapeHtml(it.desc)}" placeholder="Description">
-          <input type="number" data-ci="${ci}" data-di="${di}" data-field="price" value="${it.price}" min="0" step="0.5">
-          <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="soldOut" ${it.soldOut?'checked':''}> Sold out</label>
-          <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="hot" ${it.hot?'checked':''}> 🔥 Hot Seller</label>
-          <button class="icon-btn opts ${isOpen?'active':''}" data-act="toggleOpts" data-dishid="${it.id}">⚙ Options (${groups.length})</button>
-          <button class="icon-btn opts ${isRoutingOpen?'active':''}" data-act="toggleRouting" data-dishid="${it.id}">🖨 Print (${routing.length})</button>
-          <button class="icon-btn del" data-act="delDish" data-ci="${ci}" data-di="${di}">Delete</button>
+        <input type="text" data-ci="${ci}" data-di="${di}" data-field="name" value="${escapeHtml(it.name)}" placeholder="Dish name">
+        <input type="text" data-ci="${ci}" data-di="${di}" data-field="desc" value="${escapeHtml(it.desc)}" placeholder="Description">
+        <input type="number" data-ci="${ci}" data-di="${di}" data-field="price" value="${it.price}" min="0" step="0.5">
+        <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="soldOut" ${it.soldOut?'checked':''}> Sold out</label>
+        <label class="sold-toggle"><input type="checkbox" data-ci="${ci}" data-di="${di}" data-field="hot" ${it.hot?'checked':''}> 🔥 Hot Seller</label>
+        <button class="icon-btn opts ${isOpen?'active':''}" data-act="toggleOpts" data-dishid="${it.id}">⚙ Options (${groups.length})</button>
+        <button class="icon-btn opts ${isRoutingOpen?'active':''}" data-act="toggleRouting" data-dishid="${it.id}">🖨 Print (${routing.length})</button>
+        <button class="icon-btn del" data-act="delDish" data-ci="${ci}" data-di="${di}">Delete</button>
+      </div>`;
+    if(isRoutingOpen){
+      html += `<div class="options-panel" data-ci="${ci}" data-di="${di}">
+        <div style="font-size:11px;color:var(--cream);margin-bottom:8px;">
+          Leave empty = prints on your default printer only, using the dish name. Add a rule per station to split this dish across stations with custom text (e.g. Kitchen: "Fried Shrimp x2", Sushi Bar: "Shrimp Tempura Roll").
         </div>`;
-      if(isRoutingOpen){
-        html += `<div class="options-panel" data-ci="${ci}" data-di="${di}">
-          <div style="font-size:11px;color:var(--cream);margin-bottom:8px;">
-            Leave empty = prints on your default printer only, using the dish name. Add a rule per station to split this dish across stations with custom text (e.g. Kitchen: "Fried Shrimp x2", Sushi Bar: "Shrimp Tempura Roll").
-          </div>`;
-        routing.forEach((r, ri)=>{
-          html += `
-            <div class="option-group-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      routing.forEach((r, ri)=>{
+        html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">`;
+        html += `
               ${(state.printStations||[]).length ? `
               <select class="route-station" data-ci="${ci}" data-di="${di}" data-ri="${ri}" style="padding:7px;border-radius:6px;border:1px solid #cbbd94;">
                 ${(state.printStations||[]).map(st=>`<option value="${escapeHtml(st.name)}" ${r.station===st.name?'selected':''}>${escapeHtml(st.name)}</option>`).join('')}
@@ -2809,32 +2857,31 @@ function renderMenu(){
               <input type="text" class="route-label" data-ci="${ci}" data-di="${di}" data-ri="${ri}" value="${escapeHtml(r.label||'')}" placeholder="Text to print (blank = dish name)" style="flex:1;min-width:160px;padding:7px;border-radius:6px;border:1px solid #cbbd94;">
               <button class="icon-btn del" data-act="delRoute" data-ci="${ci}" data-di="${di}" data-ri="${ri}">✕</button>
             </div>`;
-        });
-        html += `<button class="add-group-btn" data-act="addRoute" data-ci="${ci}" data-di="${di}">+ Add Print Rule</button></div>`;
-      }
-      if(isOpen){
-        html += `<div class="options-panel" data-ci="${ci}" data-di="${di}">`;
-        groups.forEach((g, gi)=>{
-          html += `
-            <div class="option-group-card">
-              <div class="option-group-top">
-                <input type="text" class="og-label" data-ci="${ci}" data-di="${di}" data-gi="${gi}" value="${escapeHtml(g.label)}" placeholder="e.g. Choose your side">
-                <select class="og-type" data-ci="${ci}" data-di="${di}" data-gi="${gi}">
-                  <option value="single" ${g.type==='single'?'selected':''}>Pick 1</option>
-                  <option value="multi" ${g.type==='multi'?'selected':''}>Pick exactly N</option>
-                </select>
-                ${g.type==='multi' ? `<input type="number" class="og-count" data-ci="${ci}" data-di="${di}" data-gi="${gi}" value="${g.count||1}" min="1">` : ''}
-                <button class="icon-btn del" data-act="delGroup" data-ci="${ci}" data-di="${di}" data-gi="${gi}">✕</button>
-              </div>
-              <label>Choices (one per line)</label>
-              <textarea class="og-choices" rows="4" data-ci="${ci}" data-di="${di}" data-gi="${gi}" placeholder="Miso Soup&#10;Salad">${escapeHtml((g.choices||[]).join('\n'))}</textarea>
-            </div>`;
-        });
-        html += `<button class="add-group-btn" data-act="addGroup" data-ci="${ci}" data-di="${di}">+ Add Option Group</button></div>`;
-      }
-    });
-    html += `<button class="add-dish-btn" data-act="addDish" data-ci="${ci}">+ Add Dish to ${sec.cat}</button></div>`;
+      });
+      html += `<button class="add-group-btn" data-act="addRoute" data-ci="${ci}" data-di="${di}">+ Add Print Rule</button></div>`;
+    }
+    if(isOpen){
+      html += `<div class="options-panel" data-ci="${ci}" data-di="${di}">`;
+      groups.forEach((g, gi)=>{
+        html += `
+          <div class="option-group-card">
+            <div class="option-group-top">
+              <input type="text" class="og-label" data-ci="${ci}" data-di="${di}" data-gi="${gi}" value="${escapeHtml(g.label)}" placeholder="e.g. Choose your side">
+              <select class="og-type" data-ci="${ci}" data-di="${di}" data-gi="${gi}">
+                <option value="single" ${g.type==='single'?'selected':''}>Pick 1</option>
+                <option value="multi" ${g.type==='multi'?'selected':''}>Pick exactly N</option>
+              </select>
+              ${g.type==='multi' ? `<input type="number" class="og-count" data-ci="${ci}" data-di="${di}" data-gi="${gi}" value="${g.count||1}" min="1">` : ''}
+              <button class="icon-btn del" data-act="delGroup" data-ci="${ci}" data-di="${di}" data-gi="${gi}">✕</button>
+            </div>
+            <label>Choices (one per line)</label>
+            <textarea class="og-choices" rows="4" data-ci="${ci}" data-di="${di}" data-gi="${gi}" placeholder="Miso Soup&#10;Salad">${escapeHtml((g.choices||[]).join('\n'))}</textarea>
+          </div>`;
+      });
+      html += `<button class="add-group-btn" data-act="addGroup" data-ci="${ci}" data-di="${di}">+ Add Option Group</button></div>`;
+    }
   });
+  html += `<button class="add-dish-btn" data-act="addDish" data-ci="${ci}">+ Add Dish to ${escapeHtml(sec.cat)}</button></div>`;
   el.innerHTML = html;
   bindMenuEvents();
 }
@@ -2843,6 +2890,13 @@ let dragSource = null;
 let catDragSource = null;
 
 function bindMenuEvents(){
+  document.querySelectorAll('.cat-sidebar-name').forEach(nameEl=>{
+    nameEl.onclick = ()=>{
+      activeCatIndex = Number(nameEl.dataset.selectCi);
+      renderMenu();
+    };
+  });
+
   document.querySelectorAll('.dish-row[draggable]').forEach(row=>{
     row.addEventListener('dragstart', (e)=>{
       dragSource = { ci: Number(row.dataset.ci), di: Number(row.dataset.di) };
@@ -2854,12 +2908,12 @@ function bindMenuEvents(){
     });
     row.addEventListener('dragend', ()=>{
       row.classList.remove('dragging');
-      document.querySelectorAll('.cat-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+      document.querySelectorAll('.cat-sidebar-item.drag-over').forEach(c=>c.classList.remove('drag-over'));
       dragSource = null;
     });
   });
 
-  document.querySelectorAll('.cat-drag-handle').forEach(handle=>{
+  document.querySelectorAll('.cat-sidebar-drag').forEach(handle=>{
     handle.addEventListener('dragstart', (e)=>{
       catDragSource = Number(handle.dataset.ci);
       if(e.dataTransfer){
@@ -2868,29 +2922,30 @@ function bindMenuEvents(){
       }
     });
     handle.addEventListener('dragend', ()=>{
-      document.querySelectorAll('.cat-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+      document.querySelectorAll('.cat-sidebar-item.drag-over').forEach(c=>c.classList.remove('drag-over'));
       catDragSource = null;
     });
   });
 
-  document.querySelectorAll('.cat-card').forEach(card=>{
-    card.addEventListener('dragover', (e)=>{
+  document.querySelectorAll('.cat-sidebar-item').forEach(item=>{
+    item.addEventListener('dragover', (e)=>{
       if(!dragSource && catDragSource === null) return;
       e.preventDefault();
-      card.classList.add('drag-over');
+      item.classList.add('drag-over');
     });
-    card.addEventListener('dragleave', (e)=>{
-      if(e.target === card) card.classList.remove('drag-over');
+    item.addEventListener('dragleave', (e)=>{
+      if(e.target === item) item.classList.remove('drag-over');
     });
-    card.addEventListener('drop', (e)=>{
+    item.addEventListener('drop', (e)=>{
       e.preventDefault();
-      card.classList.remove('drag-over');
-      const targetCi = Number(card.dataset.catIndex);
+      item.classList.remove('drag-over');
+      const targetCi = Number(item.dataset.catIndex);
       if(dragSource){
         if(targetCi === dragSource.ci){ dragSource = null; return; }
         const [movedItem] = state.menu[dragSource.ci].items.splice(dragSource.di, 1);
         state.menu[targetCi].items.push(movedItem);
         dragSource = null;
+        activeCatIndex = targetCi;
         renderMenu();
       } else if(catDragSource !== null){
         if(targetCi === catDragSource){ catDragSource = null; return; }
@@ -2898,6 +2953,7 @@ function bindMenuEvents(){
         let insertAt = targetCi;
         if(catDragSource < targetCi) insertAt -= 1;
         state.menu.splice(insertAt, 0, movedCat);
+        activeCatIndex = insertAt;
         catDragSource = null;
         renderMenu();
       }
@@ -2937,22 +2993,6 @@ function bindMenuEvents(){
   document.querySelectorAll('[data-act="delDish"]').forEach(btn=>{
     btn.onclick = ()=>{
       state.menu[btn.dataset.ci].items.splice(btn.dataset.di,1);
-      renderMenu();
-    };
-  });
-  document.querySelectorAll('[data-act="moveCatUp"]').forEach(btn=>{
-    btn.onclick = ()=>{
-      const ci = Number(btn.dataset.ci);
-      if(ci<=0) return;
-      [state.menu[ci-1], state.menu[ci]] = [state.menu[ci], state.menu[ci-1]];
-      renderMenu();
-    };
-  });
-  document.querySelectorAll('[data-act="moveCatDown"]').forEach(btn=>{
-    btn.onclick = ()=>{
-      const ci = Number(btn.dataset.ci);
-      if(ci>=state.menu.length-1) return;
-      [state.menu[ci+1], state.menu[ci]] = [state.menu[ci], state.menu[ci+1]];
       renderMenu();
     };
   });
@@ -3081,6 +3121,7 @@ document.getElementById('loadFullMenuBtn').onclick = ()=>{
 };
 document.getElementById('addCatBtn').onclick = ()=>{
   state.menu.push({cat:'New Category', items:[], orderWindow:{enabled:false, start:'11:00', end:'15:00'}});
+  activeCatIndex = state.menu.length - 1;
   renderMenu();
 };
 
