@@ -1,7 +1,7 @@
 {
   "name": "maple-and-main",
   "version": "1.0.0",
-  "description": "Maple & Main online ordering + restaurant order screen + admin",
+  "description": "AJI SUSHI online ordering + restaurant order screen + admin",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

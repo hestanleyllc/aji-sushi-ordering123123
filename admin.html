@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Maple &amp; Main · Admin</title>
+<title>AJI SUSHI · Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -90,6 +90,17 @@
   .dish-row input[type="text"], .dish-row input[type="number"]{
     padding:8px;border-radius:6px;border:1px solid #cbbd94;background:#fff;color:var(--ink);font-size:13px;
   }
+  .dish-row input.dish-select{flex:none;width:18px;height:18px;accent-color:var(--mustard);cursor:pointer;}
+  .dish-row.row-selected{box-shadow:0 0 0 2px var(--mustard) inset;}
+  .bulk-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--mustard);color:var(--ink);border-radius:8px;padding:9px 12px;
+    font-size:12.5px;font-weight:700;margin-bottom:10px;
+  }
+  .bulk-bar button{
+    padding:6px 12px;border-radius:6px;border:none;background:var(--ink);color:var(--cream);
+    font-size:11px;font-weight:700;cursor:pointer;flex:none;
+  }
   .move-btns{display:flex;flex-direction:column;gap:2px;}
   .move-btns button{
     width:24px;height:18px;border:1px solid #cbbd94;background:#fff;border-radius:4px;
@@ -147,7 +158,7 @@
 
 <div class="checker"></div>
 <div class="topbar">
-  <div class="brand"><small>Admin</small><strong>MAPLE &amp; MAIN</strong></div>
+  <div class="brand"><small>Admin</small><strong>AJI SUSHI</strong></div>
   <div class="warn">Changes appear on the ordering site within ~20 seconds</div>
 </div>
 
@@ -185,7 +196,7 @@
 
 <script>
 const DEFAULT_SITE = {
-  name: 'MAPLE & MAIN',
+  name: 'AJI SUSHI',
   tagline: 'Est. on Main Street',
   payNote: 'No online payment — please pay at the counter or with your server.',
   contact: { phone: '', address: '1620 NY-22, Brewster, NY 10509', hours: '' },
@@ -207,8 +218,8 @@ const DEFAULT_SITE = {
 };
 const DAY_LABELS = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
 const DEFAULT_SEO = {
-  title: 'Maple & Main · Order Online',
-  description: 'Order online for pickup at Maple & Main.'
+  title: 'AJI SUSHI · Order Online',
+  description: 'Order online for pickup at AJI SUSHI.'
 };
 const DEFAULT_MENU = [
   {
@@ -2783,6 +2794,7 @@ function renderCredentials(){
 }
 
 let activeCatIndex = 0;
+let selectedDishIds = new Set();
 
 function renderMenu(){
   if(activeCatIndex >= state.menu.length) activeCatIndex = Math.max(0, state.menu.length-1);
@@ -2820,14 +2832,17 @@ function renderMenu(){
       <span style="font-size:12px;color:var(--muted);">to</span>
       <input type="time" class="cat-window-end" data-ci="${ci}" value="${ow.end||'15:00'}" ${ow.enabled?'':'disabled'} style="padding:5px;border-radius:6px;border:1px solid #cbbd94;">
     </div>
-    <div class="drag-hint">⠿ Drag any dish below onto a category in the sidebar to move it there</div>`;
+    <div class="drag-hint">⠿ Drag any dish below onto a category in the sidebar to move it there. Tick checkboxes to select several dishes and drag any of them together.</div>
+    ${selectedDishIds.size > 0 ? `<div class="bulk-bar"><span>${selectedDishIds.size} dish${selectedDishIds.size>1?'es':''} selected — drag any checked dish onto a category in the sidebar to move them all together</span><button type="button" id="clearSelectionBtn">Clear</button></div>` : ''}`;
   sec.items.forEach((it, di)=>{
     const groups = it.optionGroups || [];
     const routing = it.printRouting || [];
     const isOpen = !!openOptionsFor[it.id];
     const isRoutingOpen = !!openRoutingFor[it.id];
+    const isSelected = selectedDishIds.has(it.id);
     html += `
-      <div class="dish-row" draggable="true" data-ci="${ci}" data-di="${di}">
+      <div class="dish-row ${isSelected?'row-selected':''}" draggable="true" data-ci="${ci}" data-di="${di}">
+        <input type="checkbox" class="dish-select" data-dishid="${it.id}" ${isSelected?'checked':''} title="Select for bulk move">
         <div class="move-btns">
           <span class="drag-handle" title="Drag to move to another category">⠿</span>
           <button data-act="moveDishUp" data-ci="${ci}" data-di="${di}" ${di===0?'disabled':''}>▲</button>
@@ -2897,9 +2912,24 @@ function bindMenuEvents(){
     };
   });
 
+  document.querySelectorAll('.dish-select').forEach(cb=>{
+    cb.onchange = ()=>{
+      if(cb.checked) selectedDishIds.add(cb.dataset.dishid);
+      else selectedDishIds.delete(cb.dataset.dishid);
+      renderMenu();
+    };
+  });
+  const clearBtn = document.getElementById('clearSelectionBtn');
+  if(clearBtn) clearBtn.onclick = ()=>{ selectedDishIds.clear(); renderMenu(); };
+
   document.querySelectorAll('.dish-row[draggable]').forEach(row=>{
     row.addEventListener('dragstart', (e)=>{
-      dragSource = { ci: Number(row.dataset.ci), di: Number(row.dataset.di) };
+      const itemId = state.menu[Number(row.dataset.ci)].items[Number(row.dataset.di)].id;
+      if(selectedDishIds.size > 0 && selectedDishIds.has(itemId)){
+        dragSource = { multi: true, ids: Array.from(selectedDishIds) };
+      } else {
+        dragSource = { ci: Number(row.dataset.ci), di: Number(row.dataset.di) };
+      }
       row.classList.add('dragging');
       if(e.dataTransfer){
         e.dataTransfer.effectAllowed = 'move';
@@ -2941,6 +2971,22 @@ function bindMenuEvents(){
       item.classList.remove('drag-over');
       const targetCi = Number(item.dataset.catIndex);
       if(dragSource){
+        if(dragSource.multi){
+          const movedItems = [];
+          state.menu.forEach(section=>{
+            for(let i=section.items.length-1;i>=0;i--){
+              if(dragSource.ids.includes(section.items[i].id)){
+                movedItems.unshift(section.items.splice(i,1)[0]);
+              }
+            }
+          });
+          state.menu[targetCi].items.push(...movedItems);
+          selectedDishIds.clear();
+          dragSource = null;
+          activeCatIndex = targetCi;
+          renderMenu();
+          return;
+        }
         if(targetCi === dragSource.ci){ dragSource = null; return; }
         const [movedItem] = state.menu[dragSource.ci].items.splice(dragSource.di, 1);
         state.menu[targetCi].items.push(movedItem);
