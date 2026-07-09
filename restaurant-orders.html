@@ -347,11 +347,11 @@ function buildEposTicketBody(order, stationLabel, items){
   }
   lines.push(`<text>--------------------------------\n</text>`);
   items.forEach(({it,label})=>{
-    lines.push(`<text width="2" height="2" em="true"/>`);
-    lines.push(`<text>x${it.qty}\n</text>`);
-    lines.push(`<text width="1" height="1"/>`);
+    lines.push(`<text width="1" height="1" em="false"/>`);
+    lines.push(`<text>x${it.qty} </text>`);
+    lines.push(`<text height="2" em="true"/>`);
     lines.push(`<text>${eposEscape(label)}\n</text>`);
-    lines.push(`<text em="false"/>`);
+    lines.push(`<text height="1" em="false"/>`);
     lines.push(`<text>  $${(it.price*it.qty).toFixed(2)}\n</text>`);
     if(it.options){
       Object.entries(it.options).forEach(([k,v])=>{
@@ -365,8 +365,8 @@ function buildEposTicketBody(order, stationLabel, items){
       });
     }
     if(it.note) lines.push(`<text em="true">  Note: ${eposEscape(it.note)}\n</text><text em="false"/>`);
-    lines.push(`<text>--------------------------------\n</text>`);
   });
+  lines.push(`<text>--------------------------------\n</text>`);
   if(!stationLabel){
     // Only show money totals on the general ticket, not on per-station prep tickets.
     lines.push(`<text>Subtotal:  $${Number(order.subtotal||order.total).toFixed(2)}\n</text>`);
