@@ -319,26 +319,40 @@ function groupOrderItemsByStationClient(order){
 
 function buildEposTicketBody(order, stationLabel, items){
   // Every <text> needs its own trailing \n — ePOS-Print does NOT auto-wrap lines.
+  // Attribute-only tags (no content) set the print "mode" for whatever text comes next.
   const lines = [];
   const brandName = (document.getElementById('brandName') || {}).textContent || '';
-  lines.push(`<text align="center"/>`);
+
+  lines.push(`<text align="center" width="2" height="2" em="true"/>`);
   lines.push(`<text>${eposEscape(brandName)}\n</text>`);
+  lines.push(`<text width="1" height="1" em="false"/>`);
   if(stationLabel){
-    lines.push(`<text>STATION: ${eposEscape(stationLabel.toUpperCase())}\n</text>`);
+    lines.push(`<text em="true">STATION: ${eposEscape(stationLabel.toUpperCase())}\n</text>`);
+    lines.push(`<text em="false"/>`);
   }
-  lines.push(`<text align="left"/>`);
-  lines.push(`<text>--------------------------------\n</text>`);
-  lines.push(`<text>Order #${order.num}\n</text>`);
-  lines.push(`<text>${eposEscape(order.location)}${order.deliveryAddress ? ' - '+eposEscape(order.deliveryAddress) : ''}\n</text>`);
+  lines.push(`<text>================================\n</text>`);
+  lines.push(`<text width="2" height="2" em="true"/>`);
+  lines.push(`<text>ORDER #${order.num}\n</text>`);
+  lines.push(`<text width="1" height="1" em="false"/>`);
+  lines.push(`<text align="left" em="true"/>`);
+  lines.push(`<text>${eposEscape(order.location.toUpperCase())}${order.deliveryAddress ? ' - '+eposEscape(order.deliveryAddress) : ''}\n</text>`);
+  lines.push(`<text em="false"/>`);
+  lines.push(`<text>================================\n</text>`);
   if(order.name || order.phone){
-    lines.push(`<text>${eposEscape(order.name||'')}${order.name && order.phone ? ' - ' : ''}${eposEscape(order.phone||'')}\n</text>`);
+    lines.push(`<text em="true">${eposEscape(order.name||'')}${order.name && order.phone ? '  ' : ''}${eposEscape(order.phone||'')}\n</text>`);
+    lines.push(`<text em="false"/>`);
   }
   if(order.email){
     lines.push(`<text>${eposEscape(order.email)}\n</text>`);
   }
   lines.push(`<text>--------------------------------\n</text>`);
   items.forEach(({it,label})=>{
-    lines.push(`<text>x${it.qty} ${eposEscape(label)}  $${(it.price*it.qty).toFixed(2)}\n</text>`);
+    lines.push(`<text width="2" height="2" em="true"/>`);
+    lines.push(`<text>x${it.qty}\n</text>`);
+    lines.push(`<text width="1" height="1"/>`);
+    lines.push(`<text>${eposEscape(label)}\n</text>`);
+    lines.push(`<text em="false"/>`);
+    lines.push(`<text>  $${(it.price*it.qty).toFixed(2)}\n</text>`);
     if(it.options){
       Object.entries(it.options).forEach(([k,v])=>{
         if(!v) return;
@@ -350,17 +364,21 @@ function buildEposTicketBody(order, stationLabel, items){
         }
       });
     }
-    if(it.note) lines.push(`<text>  Note: ${eposEscape(it.note)}\n</text>`);
+    if(it.note) lines.push(`<text em="true">  Note: ${eposEscape(it.note)}\n</text><text em="false"/>`);
+    lines.push(`<text>--------------------------------\n</text>`);
   });
-  lines.push(`<text>--------------------------------\n</text>`);
   if(!stationLabel){
     // Only show money totals on the general ticket, not on per-station prep tickets.
-    lines.push(`<text>Subtotal: $${Number(order.subtotal||order.total).toFixed(2)}\n</text>`);
-    lines.push(`<text>Tax: $${Number(order.tax||0).toFixed(2)}\n</text>`);
-    lines.push(`<text>Total: $${Number(order.total).toFixed(2)}\n</text>`);
-    lines.push(`<text>${order.paid ? 'PAID ONLINE' : 'Pay in store'}\n</text>`);
+    lines.push(`<text>Subtotal:  $${Number(order.subtotal||order.total).toFixed(2)}\n</text>`);
+    lines.push(`<text>Tax:       $${Number(order.tax||0).toFixed(2)}\n</text>`);
+    lines.push(`<text width="2" height="2" em="true"/>`);
+    lines.push(`<text>TOTAL: $${Number(order.total).toFixed(2)}\n</text>`);
+    lines.push(`<text width="1" height="1" em="false"/>`);
+    lines.push(`<text align="center" em="true"/>`);
+    lines.push(`<text>${order.paid ? '*** PAID ONLINE ***' : '*** PAY IN STORE ***'}\n</text>`);
+    lines.push(`<text align="left" em="false"/>`);
   }
-  if(order.note) lines.push(`<text>Order note: ${eposEscape(order.note)}\n</text>`);
+  if(order.note) lines.push(`<text em="true">Order note: ${eposEscape(order.note)}\n</text><text em="false"/>`);
   lines.push(`<feed line="3"/>`);
   lines.push(`<cut type="feed"/>`);
   return lines;
@@ -491,8 +509,17 @@ async function renderKitchen(){
   if(!firstLoad){
     const newOrders = list.filter(o=>!knownOrderIds.has(o.id));
     if(newOrders.length) playLoudAlarm();
-    newOrders.forEach(o=>{ if(!networkPrintAttempted.has(o.id)) attemptNetworkPrint(o); });
   }
+  // Print trigger is independent of firstLoad: if the page was just opened/refreshed
+  // right as an order came in, it would otherwise be silently absorbed into "known"
+  // on that very first render and never be detected as "new" again. Instead, print
+  // any sufficiently recent order (created within the last 2 minutes) that we
+  // haven't already tried — networkPrintAttempted still guards against duplicates.
+  list.forEach(o=>{
+    if(!networkPrintAttempted.has(o.id) && (Date.now() - o.createdAt) < 120000){
+      attemptNetworkPrint(o);
+    }
+  });
   knownOrderIds = currentIds;
   firstLoad = false;
 
