@@ -5,153 +5,162 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AJI SUSHI · Incoming Orders</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --steel:#2B2B2E;
-    --steel-line:#3E3E42;
-    --chrome:#B9C1C7;
-    --cream:#FAF3E4;
-    --ink:#1C1B19;
-    --diner-red:#C8102E;
-    --mustard:#F2A93B;
-    --grill-green:#3F7A55;
-    --muted:#8E8B84;
+    --page-bg:#F5F5F7;
+    --card:#FFFFFF;
+    --ink:#1C1C1E;
+    --stone:#6E6E73;
+    --stone-light:#AEAEB2;
+    --line:#E5E5EA;
+    --blue:#007AFF;
+    --blue-soft:#EAF2FF;
+    --green:#34C759;
+    --green-deep:#248A3D;
+    --red:#FF3B30;
+    --red-soft:#FFEBEA;
+    --amber:#FF9500;
   }
-  html{background:var(--steel);}
+  html{background:var(--page-bg);}
   *{box-sizing:border-box;}
   body{
     margin:0;
-    background:var(--steel);
-    background-image:repeating-linear-gradient(115deg, rgba(255,255,255,0.015) 0 2px, transparent 2px 40px);
-    color:var(--cream);
-    font-family:'Inter',sans-serif;
+    background:var(--page-bg);
+    color:var(--ink);
+    font-family:'Inter',-apple-system,sans-serif;
     min-height:100vh;
+    -webkit-font-smoothing:antialiased;
   }
-  .checker{
-    height:6px;width:100%;
-    background-image:
-      linear-gradient(45deg, var(--ink) 25%, transparent 25%),
-      linear-gradient(-45deg, var(--ink) 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, var(--ink) 75%),
-      linear-gradient(-45deg, transparent 75%, var(--ink) 75%);
-    background-size:12px 12px;
-    background-color:var(--cream);
-    background-position:0 0, 0 6px, 6px -6px, -6px 0;
-  }
+  .checker{display:none;}
   .topbar{
     display:flex;align-items:center;justify-content:space-between;
-    padding:16px 20px;border-bottom:1px solid var(--steel-line);
+    padding:16px 20px;border-bottom:1px solid var(--line);background:var(--card);
+    position:sticky;top:0;z-index:30;
   }
-  .brand{display:flex;flex-direction:column;line-height:1;}
-  .brand small{color:var(--mustard);font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:600;}
-  .brand strong{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.5px;}
+  .brand{display:flex;flex-direction:column;line-height:1.2;}
+  .brand small{color:var(--stone);font-size:11px;letter-spacing:0.04em;text-transform:uppercase;font-weight:600;}
+  .brand strong{font-family:'Inter',sans-serif;font-weight:800;font-size:20px;letter-spacing:-0.01em;color:var(--ink);}
 
-  .kitchen{padding:20px;background:var(--steel);}
+  .kitchen{padding:20px;background:var(--page-bg);}
   .kitchen-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
-  .kitchen-head h1{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1px;display:flex;align-items:center;gap:10px;margin:0;}
+  .kitchen-head h1{font-family:'Inter',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.01em;display:flex;align-items:center;gap:10px;margin:0;color:var(--ink);}
   .wheel-icon{
-    width:26px;height:26px;border-radius:50%;flex:none;
-    background:conic-gradient(var(--mustard) 0 25%, var(--steel-line) 0 50%, var(--mustard) 0 75%, var(--steel-line) 0 100%);
-    border:2px solid var(--chrome);
+    width:20px;height:20px;border-radius:50%;flex:none;
+    background:conic-gradient(var(--blue) 0 25%, var(--line) 0 50%, var(--blue) 0 75%, var(--line) 0 100%);
+    border:2px solid var(--stone-light);
     animation:spin 12s linear infinite;
   }
   @media (prefers-reduced-motion: reduce){ .wheel-icon{animation:none;} }
   @keyframes spin{ to{ transform:rotate(360deg); } }
-  .refresh-note{color:var(--muted);font-size:11px;font-family:'Space Mono',monospace;}
+  .refresh-note{color:var(--stone);font-size:11px;font-family:'Inter',sans-serif;}
   .sound-toggle{
-    padding:7px 14px;border-radius:20px;border:1px solid var(--steel-line);
-    background:var(--steel-line);color:var(--cream);font-size:12px;font-weight:700;
-    cursor:pointer;letter-spacing:0.3px;
+    padding:8px 16px;border-radius:20px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font-size:12.5px;font-weight:700;
+    cursor:pointer;letter-spacing:0.01em;
   }
-  .sound-toggle.off{color:var(--muted);}
+  .sound-toggle.off{color:var(--stone);}
 
   .columns{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
   @media(max-width:800px){.columns{grid-template-columns:1fr;}}
   .col-head{
     display:flex;align-items:center;gap:8px;margin-bottom:10px;
-    font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;
+    font-family:'Inter',sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;
   }
   .col-head .dot{width:8px;height:8px;border-radius:50%;background:currentColor;}
-  .col.pending .col-head{color:var(--diner-red);}
-  .col.confirmed .col-head{color:var(--grill-green);}
+  .col.pending .col-head{color:var(--red);}
+  .col.confirmed .col-head{color:var(--green-deep);}
 
   .ticket{
-    position:relative;background:var(--cream);color:var(--ink);border-radius:3px;
-    padding:16px 16px 18px;margin-bottom:18px;
-    box-shadow:0 6px 14px rgba(0,0,0,0.4);
+    position:relative;background:var(--card);color:var(--ink);border-radius:14px;
+    padding:16px;margin-bottom:14px;border:1px solid var(--line);
+    box-shadow:0 1px 3px rgba(0,0,0,0.04);
   }
-  .ticket.urgent{box-shadow:0 0 0 2px var(--diner-red), 0 6px 14px rgba(0,0,0,0.4);}
-  .ticket::before{
-    content:'';position:absolute;top:-9px;left:50%;transform:translateX(-50%);
-    width:26px;height:12px;background:var(--chrome);border-radius:2px;
-    box-shadow:0 2px 4px rgba(0,0,0,0.5);
-  }
-  .ticket::after{
-    content:'';position:absolute;top:-4px;left:50%;transform:translateX(-50%);
-    width:4px;height:10px;background:var(--steel);
-  }
-  .ticket.r1{transform:rotate(-1.3deg);}
-  .ticket.ticket-compact{
-    padding:10px 14px;cursor:pointer;transform:none;
-  }
+  .ticket.urgent{box-shadow:0 0 0 2px var(--red), 0 1px 3px rgba(0,0,0,0.04);}
+  .ticket.ticket-compact{ padding:12px 14px;cursor:pointer; }
   .ticket-compact-row{display:flex;align-items:center;gap:8px;justify-content:space-between;}
-  .ticket-compact-row .ticket-num{font-size:15px;}
-  .ticket-compact-mid{flex:1;font-size:12px;color:#6b5d38;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 8px;}
-  .ticket-compact-total{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;}
-  .ticket-compact-time{font-size:10px;color:#8a7a52;margin-top:3px;font-family:'Space Mono',monospace;}
-  .ticket.r2{transform:rotate(1.1deg);}
-  .ticket.r3{transform:rotate(-0.5deg);}
-  .ticket-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}
-  .ticket-num{font-family:'Space Mono',monospace;font-size:24px;font-weight:700;}
-  .ticket-time{font-family:'Space Mono',monospace;font-size:13px;color:#8a7a52;}
-  .ticket-loc{font-size:12px;font-weight:700;color:var(--diner-red);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px;}
-  .ticket-name{font-size:17px;color:#4b3f22;margin-bottom:10px;font-weight:700;}
-  .ticket-name a{color:var(--diner-red);text-decoration:none;}
-  .ticket-items{list-style:none;padding:0;margin:0 0 10px;}
-  .ticket-items li{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:16px;padding:5px 0;border-bottom:1px dotted #cbbd94;}
-  .ticket-items .q{font-family:'Space Mono',monospace;color:#8a7a52;margin-right:6px;}
-  .ticket-items .item-sub{font-size:11px;color:#8a7a52;margin:2px 0 0 20px;}
-  .ticket-note{font-size:12px;background:#fff;border:1px dashed #cbbd94;padding:6px 8px;border-radius:6px;margin-bottom:10px;color:#6b5d38;}
-  .ticket-total{display:flex;justify-content:space-between;font-size:13px;font-weight:700;margin-bottom:10px;padding-top:4px;border-top:1px solid #cbbd94;}
+  .ticket-compact-row .ticket-num{font-size:14px;}
+  .ticket-compact-mid{flex:1;font-size:12.5px;color:var(--stone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 8px;}
+  .ticket-compact-total{font-family:'Inter',sans-serif;font-size:13px;font-weight:700;}
+  .ticket-compact-time{font-size:10.5px;color:var(--stone-light);margin-top:3px;}
+
+  .ticket-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+  .ticket-num{font-family:'Inter',sans-serif;font-size:20px;font-weight:800;letter-spacing:-0.01em;}
+  .ticket-time{font-family:'Inter',sans-serif;font-size:12px;color:var(--stone);}
+  .ticket-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+  .ticket-tag{
+    display:inline-flex;align-items:center;padding:5px 11px;border-radius:100px;
+    font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;
+  }
+  .ticket-tag.solid{background:var(--ink);color:#fff;}
+  .ticket-tag.outline{background:var(--card);color:var(--ink);border:1px solid var(--line);}
+  .first-order-badge{
+    display:inline-flex;align-items:center;gap:5px;background:var(--blue-soft);color:var(--blue);
+    font-size:11px;font-weight:800;padding:5px 11px;border-radius:100px;margin-bottom:8px;
+  }
+  .first-order-tip{
+    font-size:11.5px;color:var(--blue);background:var(--blue-soft);border-radius:8px;
+    padding:8px 10px;margin-bottom:10px;line-height:1.4;
+  }
+  .ticket-name{font-size:15px;color:var(--ink);margin-bottom:2px;font-weight:700;}
+  .ticket-name a{color:var(--blue);text-decoration:none;font-weight:600;}
+  .ticket-email{font-size:12px;color:var(--stone);margin-bottom:10px;}
+  .ticket-items{list-style:none;padding:0;margin:10px 0;border-top:1px solid var(--line);}
+  .ticket-items li{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:14px;padding:9px 0;border-bottom:1px solid var(--line);}
+  .ticket-items .q{font-family:'Inter',sans-serif;color:var(--stone);margin-right:6px;font-weight:600;}
+  .ticket-items .item-sub{font-size:11.5px;color:var(--stone);margin:3px 0 0 20px;}
+  .ticket-note{font-size:12px;background:#FFF9E8;border:1px solid #F5E5B8;padding:7px 9px;border-radius:8px;margin-bottom:10px;color:#8A6D00;}
+  .ticket-total{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:8px;color:var(--stone);}
+  .ticket-total.grand{font-size:15px;font-weight:800;color:var(--ink);padding-top:8px;border-top:1px solid var(--line);margin-bottom:12px;}
   .pickup-badge{
-    display:inline-flex;align-items:center;gap:6px;background:#EFE4CB;border:1px solid #cbbd94;
-    border-radius:6px;padding:6px 10px;font-size:13px;font-weight:700;margin-bottom:10px;color:#4b3f22;
+    display:inline-flex;align-items:center;gap:6px;background:var(--blue-soft);border:none;
+    border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;margin-bottom:10px;color:var(--blue);
   }
   .pickup-badge .clock{font-size:14px;}
   .needs-time{
-    background:#FBE4E1;border:1px dashed var(--diner-red);border-radius:6px;padding:8px 10px;
-    font-size:11px;font-weight:700;color:var(--diner-red);text-transform:uppercase;letter-spacing:0.5px;
+    background:var(--red-soft);border-radius:8px;padding:9px 10px;
+    font-size:11.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.03em;
     margin-bottom:10px;text-align:center;
   }
-  .time-picks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
-  .time-pick{
-    padding:6px 10px;border-radius:16px;border:1px solid #cbbd94;background:#fff;
-    font-size:12px;font-weight:700;cursor:pointer;color:#4b3f22;
+  .pickup-stepper{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    border:1.5px solid var(--amber);border-radius:100px;padding:10px 18px;margin-bottom:10px;background:var(--card);
   }
-  .time-pick.selected{background:var(--mustard);border-color:var(--mustard);color:var(--ink);}
+  .pickup-stepper .clock-ic{font-size:15px;color:var(--amber);}
+  .pickup-stepper input{
+    border:none;outline:none;width:52px;text-align:center;font-size:17px;font-weight:800;
+    font-family:'Inter',sans-serif;color:var(--ink);background:transparent;
+  }
+  .pickup-stepper .unit{font-size:13px;color:var(--stone);font-weight:600;}
+  .time-picks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;justify-content:center;}
+  .time-pick{
+    padding:6px 12px;border-radius:100px;border:1px solid var(--line);background:var(--card);
+    font-size:11.5px;font-weight:700;cursor:pointer;color:var(--stone);
+  }
+  .time-pick.selected{background:var(--ink);border-color:var(--ink);color:#fff;}
   .custom-time-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
   .custom-time-row input[type="time"]{
-    flex:1;padding:8px;border-radius:6px;border:1px solid #cbbd94;font-family:'Inter',sans-serif;font-size:13px;
+    flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);font-family:'Inter',sans-serif;font-size:13px;
   }
   .ticket-actions{display:flex;gap:8px;}
   .tk-btn{
-    flex:1;padding:9px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;
-    text-transform:uppercase;letter-spacing:0.5px;
+    flex:1;padding:13px;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;
+    letter-spacing:0.01em;
   }
-  .tk-btn.confirm{background:var(--diner-red);color:#fff;}
-  .tk-btn.confirm:disabled{background:#cbbd94;color:#8a7a52;cursor:not-allowed;}
-  .tk-btn.start{background:var(--mustard);color:var(--ink);}
-  .tk-btn.finish{background:var(--grill-green);color:#fff;}
-  .tk-btn.archive{background:#ddd0aa;color:#5c4f2c;}
-  .col-empty{color:var(--muted);font-size:12px;padding:14px;border:1px dashed var(--steel-line);border-radius:8px;text-align:center;}
+  .tk-btn.reject{background:var(--red-soft);color:var(--red);flex:0 0 52px;font-size:18px;}
+  .tk-btn.confirm{background:var(--green);color:#fff;}
+  .tk-btn.confirm:disabled{background:var(--line);color:var(--stone-light);cursor:not-allowed;}
+  .tk-btn.start{background:var(--amber);color:#fff;}
+  .tk-btn.finish{background:var(--green);color:#fff;}
+  .tk-btn.archive, .tk-btn.collapse-btn{background:var(--page-bg);color:var(--ink);border:1px solid var(--line);}
+  .col-empty{color:var(--stone);font-size:12.5px;padding:16px;border:1px dashed var(--line);border-radius:12px;text-align:center;background:var(--card);}
   .badge-new{
-    position:absolute;top:8px;right:10px;background:var(--diner-red);color:#fff;
-    font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:1px;
+    position:absolute;top:14px;right:14px;background:var(--red);color:#fff;
+    font-size:9.5px;font-weight:800;padding:3px 8px;border-radius:100px;letter-spacing:0.04em;
   }
   .audio-unlock-banner{
-    display:none;background:var(--diner-red);color:#fff;text-align:center;
-    padding:10px 16px;font-size:13px;font-weight:700;letter-spacing:0.3px;
+    display:none;background:var(--red);color:#fff;text-align:center;
+    padding:11px 16px;font-size:13px;font-weight:700;letter-spacing:0.01em;
     cursor:pointer;animation:pulseBanner 1.2s ease-in-out infinite;
   }
   .audio-unlock-banner.show{display:block;}
@@ -490,14 +499,14 @@ function renderPrintStatus(order){
   if(!hasAnyIp) return '';
   const status = networkPrintStatus[order.id];
   if(!status){
-    return `<div class="ticket-actions"><button class="tk-btn collapse-btn" data-print-id="${order.id}" style="background:var(--chrome);color:var(--ink);width:100%;">🖨 Print</button></div>`;
+    return `<div class="ticket-actions"><button class="tk-btn collapse-btn" data-print-id="${order.id}" style="width:100%;">🖨 Print</button></div>`;
   }
   if(status.ok){
-    return `<div style="font-size:11px;color:var(--grill-green);font-weight:700;margin-top:4px;">✓ Sent to printer</div>`;
+    return `<div style="font-size:11px;color:var(--green-deep);font-weight:700;margin-top:4px;">✓ Sent to printer</div>`;
   }
   return `<div class="ticket-actions">
-    <div style="font-size:11px;color:var(--diner-red);font-weight:700;margin-bottom:4px;">✗ Print failed (${escapeHtml(status.reason||'error')})</div>
-    <button class="tk-btn collapse-btn" data-print-id="${order.id}" style="background:var(--chrome);color:var(--ink);width:100%;">🖨 Retry Print</button>
+    <div style="font-size:11px;color:var(--red);font-weight:700;margin-bottom:4px;">✗ Print failed (${escapeHtml(status.reason||'error')})</div>
+    <button class="tk-btn collapse-btn" data-print-id="${order.id}" style="width:100%;">🖨 Retry Print</button>
   </div>`;
 }
 
@@ -517,7 +526,7 @@ async function renderKitchen(){
     // successful poll and wrongly re-trigger the alarm. But if we've never
     // rendered anything yet, at least show a clear message instead of blank.
     if(!el.innerHTML.trim()){
-      el.innerHTML = '<div style="padding:20px;color:var(--diner-red);font-weight:700;">⚠️ Could not load orders. If a login prompt appeared, please fill it in. Retrying automatically…</div>';
+      el.innerHTML = '<div style="padding:20px;color:var(--red);font-weight:700;">⚠️ Could not load orders. If a login prompt appeared, please fill it in. Retrying automatically…</div>';
     }
     return;
   }
@@ -584,7 +593,7 @@ async function renderKitchen(){
 
         if(isHistory && !isExpanded){
           // Compact one-line view for already-confirmed orders — tap to see full details.
-          html += `<div class="ticket ${col.rot} ticket-compact" data-toggle-id="${o.id}">
+          html += `<div class="ticket ticket-compact" data-toggle-id="${o.id}">
             <div class="ticket-compact-row">
               <span class="ticket-num">#${o.num}</span>
               <span class="ticket-compact-mid">${o.name ? escapeHtml(o.name) : (o.phone ? escapeHtml(o.phone) : '')}${o.pickupTime ? ' · ⏱'+o.pickupTime : ''}</span>
@@ -607,16 +616,27 @@ async function renderKitchen(){
         }).join('');
         const noteHtml = o.note ? `<div class="ticket-note">Note: ${escapeHtml(o.note)}</div>` : '';
         const phoneHtml = o.phone ? `📞 <a href="tel:${escapeHtml(o.phone.replace(/[^0-9+]/g,''))}">${escapeHtml(o.phone)}</a>` : '';
-        const emailHtml = o.email ? `<div class="ticket-name" style="font-size:12px;color:#6b5d38;">✉ ${escapeHtml(o.email)}</div>` : '';
-        const newCustomerBadge = o.isNewCustomer ? `<div style="display:inline-block;background:var(--diner-red);color:#fff;font-size:11px;font-weight:800;padding:3px 9px;border-radius:100px;margin-bottom:6px;">🆕 NEW CUSTOMER</div>` : '';
+        const emailHtml = o.email ? `<div class="ticket-email">✉ ${escapeHtml(o.email)}</div>` : '';
+        const firstOrderBadge = o.isNewCustomer ? `<div class="first-order-badge">⭐ 1st order</div>` : '';
+        const firstOrderTip = o.isNewCustomer ? `<div class="first-order-tip">First time order! You may want to confirm with this client by calling.</div>` : '';
         const nameHtml = (o.name || o.phone) ? `<div class="ticket-name">${o.name ? escapeHtml(o.name) : ''}${o.name && o.phone ? ' · ' : ''}${phoneHtml}</div>` : '';
+        const tagsHtml = `<div class="ticket-tags">
+          <span class="ticket-tag solid">${escapeHtml(o.location||'Pickup')}</span>
+          <span class="ticket-tag outline">${o.paid ? '✅ Paid Online' : 'Card at pickup counter'}</span>
+        </div>`;
 
         let bodyHtml = '';
         if(col.key === 'pending'){
           const sel = pendingSelections[o.id] || {};
           const preview = computePickupLabel(sel);
+          const minutesVal = sel.offsetMinutes || 15;
           bodyHtml = `
             <div class="needs-time">⏱ Set a pickup time to confirm</div>
+            <div class="pickup-stepper">
+              <span class="clock-ic">⏱</span>
+              <input type="number" min="1" class="minutes-stepper-input" data-id="${o.id}" value="${minutesVal}">
+              <span class="unit">min</span>
+            </div>
             <div class="time-picks">
               ${QUICK_MINUTES.map(m=>`<div class="time-pick ${sel.offsetMinutes===m?'selected':''}" data-id="${o.id}" data-mins="${m}">+${m} min</div>`).join('')}
             </div>
@@ -624,30 +644,33 @@ async function renderKitchen(){
               <input type="time" data-id="${o.id}" class="custom-time-input" value="${sel.customTime||''}">
             </div>
             <div class="ticket-actions">
-              <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>${preview? 'Confirm '+preview : 'Pick a time'}</button>
+              <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
+              <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>${preview? 'Accept · '+preview : 'Pick a time'}</button>
             </div>`;
         } else {
           const badge = o.pickupTime ? `<div class="pickup-badge"><span class="clock">⏱</span>Pickup ${o.pickupTime}</div>` : '';
           bodyHtml = `${badge}<div class="ticket-actions">
-              <button class="tk-btn collapse-btn" data-collapse-id="${o.id}" style="background:var(--chrome);color:var(--ink);width:100%;">Collapse ▴</button>
+              <button class="tk-btn collapse-btn" data-collapse-id="${o.id}" style="width:100%;">Collapse ▴</button>
             </div>`;
         }
 
-        html += `<div class="ticket ${col.rot} ${col.key==='pending'?'urgent':''}">
+        html += `<div class="ticket ${col.key==='pending'?'urgent':''}">
           ${isFresh?'<div class="badge-new">NEW</div>':''}
-          ${newCustomerBadge}
           <div class="ticket-top">
             <div class="ticket-num">#${o.num}</div>
             <div class="ticket-time">${formatClockTime(o.createdAt)} · ${timeAgo(o.createdAt)}</div>
           </div>
-          <div class="ticket-loc">${escapeHtml(o.location)}${o.deliveryAddress ? ` — ${escapeHtml(o.deliveryAddress)}` : ''}</div>
+          ${tagsHtml}
+          ${firstOrderBadge}
           ${nameHtml}
           ${emailHtml}
+          ${o.deliveryAddress ? `<div class="ticket-email">📍 ${escapeHtml(o.deliveryAddress)}</div>` : ''}
+          ${firstOrderTip}
           <ul class="ticket-items">${itemsHtml}</ul>
           ${noteHtml}
-          ${o.subtotal!=null ? `<div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;"><span>Subtotal</span><span>$${Number(o.subtotal).toFixed(2)}</span></div>
-          <div class="ticket-total" style="border-top:none;font-weight:400;padding-top:0;margin-bottom:2px;"><span>Tax</span><span>$${Number(o.tax||0).toFixed(2)}</span></div>` : ''}
-          <div class="ticket-total"><span>Total ${o.paid ? '· PAID ONLINE ✅' : '(pay in store)'}</span><span>$${Number(o.total).toFixed(2)}</span></div>
+          ${o.subtotal!=null ? `<div class="ticket-total"><span>Subtotal</span><span>$${Number(o.subtotal).toFixed(2)}</span></div>
+          <div class="ticket-total"><span>Tax</span><span>$${Number(o.tax||0).toFixed(2)}</span></div>` : ''}
+          <div class="ticket-total grand"><span>Total</span><span>$${Number(o.total).toFixed(2)}</span></div>
           ${renderPrintStatus(o)}
           ${bodyHtml}
         </div>`;
@@ -680,12 +703,33 @@ async function renderKitchen(){
       renderKitchen();
     };
   });
+  // minutes stepper (the round pill "N min" input)
+  el.querySelectorAll('.minutes-stepper-input').forEach(inp=>{
+    inp.onchange = ()=>{
+      const id = inp.dataset.id;
+      const mins = Math.max(1, Number(inp.value) || 1);
+      pendingSelections[id] = {offsetMinutes:mins, customTime:null};
+      renderKitchen();
+    };
+  });
   // custom time input
   el.querySelectorAll('.custom-time-input').forEach(inp=>{
     inp.onchange = ()=>{
       const id = inp.dataset.id;
       pendingSelections[id] = {offsetMinutes:null, customTime:inp.value};
       renderKitchen();
+    };
+  });
+  // reject a pending order outright (no pickup time offered)
+  el.querySelectorAll('[data-reject-id]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.rejectId;
+      if(!confirm('Reject this order? The customer will not be notified automatically — call them if needed.')) return;
+      try{
+        await fetch('/api/orders/'+id, {method:'DELETE'});
+        delete pendingSelections[id];
+        renderKitchen();
+      }catch(e){ console.error(e); alert('Could not reject this order — please try again.'); }
     };
   });
   // confirm pickup time -> sends time to customer, moves order to History, stops the alarm
