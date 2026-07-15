@@ -46,7 +46,52 @@ function sendCustomerConfirmationEmail(order){
   }).catch(err => console.error('Failed to send customer confirmation email', err));
 }
 
-// ---- Printer (PrintNode) ----
+// ---- Phone call reminders (Twilio) ----
+let twilioClient = null;
+const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER;
+if(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && TWILIO_FROM_NUMBER){
+  const twilio = require('twilio');
+  twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+} else {
+  console.log('Phone call reminders disabled — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER to enable them.');
+}
+
+function callAboutUnconfirmedOrder(order){
+  const cfg = data.config.siteInfo || {};
+  const to = cfg.orderAlertPhone;
+  if(!twilioClient || !to) return;
+  const restaurantName = cfg.name || 'your restaurant';
+  const say = `Hello, this is an automated reminder from your online ordering system. Order number ${order.num} at ${restaurantName} has not been confirmed yet. Please check your order screen.`;
+  twilioClient.calls.create({
+    to,
+    from: TWILIO_FROM_NUMBER,
+    twiml: `<Response><Say voice="alice">${say}</Say><Pause length="1"/><Say voice="alice">${say}</Say></Response>`,
+  }).catch(err => console.error('Failed to place order reminder call', err));
+}
+
+function checkUnconfirmedOrdersForCalls(){
+  const cfg = data.config.siteInfo || {};
+  if(!cfg.orderAlertEnabled || !twilioClient || !cfg.orderAlertPhone) return;
+  const thresholdMs = Math.max(1, Number(cfg.orderAlertMinutes) || 5) * 60000;
+  const repeatMs = 5 * 60000; // re-call at most every 5 minutes while still unconfirmed
+  const now = Date.now();
+  let changed = false;
+  data.orders.forEach(order=>{
+    if(order.status !== 'pending') return;
+    const age = now - order.createdAt;
+    if(age < thresholdMs) return;
+    const lastCall = order.lastCallAt || 0;
+    if(now - lastCall < repeatMs) return;
+    callAboutUnconfirmedOrder(order);
+    order.lastCallAt = now;
+    order.callCount = (order.callCount || 0) + 1;
+    changed = true;
+  });
+  if(changed) saveData();
+}
+setInterval(checkUnconfirmedOrdersForCalls, 60000);
+
+
 const PRINTNODE_API_KEY = process.env.PRINTNODE_API_KEY;
 const PRINTNODE_PRINTER_ID = process.env.PRINTNODE_PRINTER_ID; // default/general printer, used as fallback
 if(!PRINTNODE_API_KEY){
@@ -405,6 +450,10 @@ const DEFAULT_CONFIG = {
     taxRate: 8.375,
     deliveryEnabled: false,
     localPrinterIp: '',
+    orderAlertEnabled: false,
+    orderAlertPhone: '',
+    orderAlertMinutes: 5,
+    printEnabled: true,
     orderingHours: {
       timezone: 'America/New_York',
       schedule: {
@@ -536,6 +585,35 @@ app.post('/api/credentials', requireAdminAuth, (req, res) => {
       data.config.auth[key] = body[key].trim();
     }
   });
+  saveData();
+  res.json({ ok: true });
+});
+
+// ---- Kitchen-side settings (print on/off) — kitchen staff can toggle this without full admin access ----
+app.post('/api/kitchen-settings', requireKitchenAuth, (req, res) => {
+  const body = req.body || {};
+  if(!data.config.siteInfo) data.config.siteInfo = {};
+  if(typeof body.printEnabled === 'boolean'){
+    data.config.siteInfo.printEnabled = body.printEnabled;
+  }
+  saveData();
+  res.json({ ok: true, printEnabled: data.config.siteInfo.printEnabled });
+});
+
+// ---- Quick sold-out toggle from the kitchen board (no need to open the full admin menu editor) ----
+app.post('/api/menu-soldout', requireKitchenAuth, (req, res) => {
+  const { dishId, soldOut } = req.body || {};
+  if(!dishId) return res.status(400).json({ error: 'dishId is required' });
+  let found = false;
+  (data.config.menu || []).forEach(section => {
+    (section.items || []).forEach(item => {
+      if(item.id === dishId){
+        item.soldOut = !!soldOut;
+        found = true;
+      }
+    });
+  });
+  if(!found) return res.status(404).json({ error: 'Dish not found' });
   saveData();
   res.json({ ok: true });
 });

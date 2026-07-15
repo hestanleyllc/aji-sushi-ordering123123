@@ -165,6 +165,65 @@
   }
   .audio-unlock-banner.show{display:block;}
   @keyframes pulseBanner{ 0%,100%{opacity:1;} 50%{opacity:0.7;} }
+
+  /* ---- App shell: bottom tabs + list/detail/settings views ---- */
+  .bottom-tabs{
+    position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);
+    border-top:1px solid var(--line);z-index:50;
+  }
+  .bottom-tab-btn{
+    flex:1;padding:12px 8px 10px;background:none;border:none;font-size:11px;font-weight:700;
+    color:var(--stone);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;
+  }
+  .bottom-tab-btn .tab-icon{font-size:20px;}
+  .bottom-tab-btn.active{color:var(--blue);}
+
+  .list-section{margin-bottom:6px;}
+  .list-section-head{
+    display:flex;align-items:center;gap:8px;padding:16px 16px 8px;
+    font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--stone);
+  }
+  .list-section-head .dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .compact-row{
+    display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+    background:var(--card);border-bottom:1px solid var(--line);cursor:pointer;
+  }
+  .compact-row:active{background:var(--page-bg);}
+  .compact-row-name{font-size:15px;font-weight:700;color:var(--ink);}
+  .compact-row-amount{font-size:15px;font-weight:700;color:var(--ink);}
+  .compact-row-sub{font-size:11.5px;color:var(--stone);margin-top:2px;}
+
+  .detail-topbar{
+    display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);
+    background:var(--card);position:sticky;top:0;z-index:20;
+  }
+  .detail-back-btn{
+    background:none;border:none;font-size:22px;color:var(--ink);cursor:pointer;padding:2px 6px 2px 0;line-height:1;
+  }
+  .detail-topbar-title{font-size:16px;font-weight:800;color:var(--ink);}
+  .detail-body{padding:16px 16px 90px;max-width:520px;margin:0 auto;}
+
+  .settings-view{padding:0 16px 90px;max-width:560px;margin:0 auto;}
+  .settings-section{margin-bottom:22px;}
+  .settings-section-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--stone);margin-bottom:8px;padding:0 4px;}
+  .settings-card{background:var(--card);border-radius:14px;border:1px solid var(--line);overflow:hidden;}
+  .settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);gap:10px;}
+  .settings-row:last-child{border-bottom:none;}
+  .settings-row-label{font-size:14.5px;font-weight:600;color:var(--ink);}
+  .settings-row-sub{font-size:11.5px;color:var(--stone);margin-top:2px;}
+  .toggle-switch{
+    position:relative;width:48px;height:28px;border-radius:100px;background:var(--line);border:none;cursor:pointer;flex:none;transition:background .2s;padding:0;
+  }
+  .toggle-switch.on{background:var(--green);}
+  .toggle-switch .knob{
+    position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:left .2s;
+  }
+  .toggle-switch.on .knob{left:22px;}
+  .eod-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+  .eod-stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center;}
+  .eod-stat-num{font-size:24px;font-weight:800;color:var(--ink);}
+  .eod-stat-label{font-size:11px;color:var(--stone);margin-top:2px;text-transform:uppercase;letter-spacing:0.03em;}
 </style>
 </head>
 <body>
@@ -178,12 +237,21 @@
 
 <div class="kitchen" id="kitchenView"></div>
 
+<div class="bottom-tabs" id="bottomTabs">
+  <button class="bottom-tab-btn" data-tab="list"><span class="tab-icon">📋</span>Orders</button>
+  <button class="bottom-tab-btn" data-tab="settings"><span class="tab-icon">⚙️</span>Settings</button>
+</div>
+
 <script>
 let soundEnabled = true;
 let knownOrderIds = new Set();
 let firstLoad = true;
 let audioUnlocked = false;
 let pendingSelections = {}; // orderId -> {offsetMinutes, customTime}
+let currentView = 'list'; // 'list' | 'detail' | 'settings'
+let currentDetailOrderId = null;
+let latestOrdersList = [];
+let printEnabled = true;
 
 function refreshAudioUnlockBanner(){
   const banner = document.getElementById('audioUnlockBanner');
@@ -489,10 +557,11 @@ async function attemptNetworkPrint(order){
   const result = await printOrderToLocalNetwork(order);
   networkPrintStatus[order.id] = result;
   if(!result.ok) console.warn('Network print failed for order #' + order.num, result.reason);
-  renderKitchen();
+  renderCurrentView();
 }
 
 function renderPrintStatus(order){
+  if(!printEnabled) return '';
   const defaultIp = (window.SITE_INFO && window.SITE_INFO.localPrinterIp) ? window.SITE_INFO.localPrinterIp.trim() : '';
   const stations = (window.SITE_INFO && Array.isArray(window.SITE_INFO.printStations)) ? window.SITE_INFO.printStations : [];
   const hasAnyIp = !!defaultIp || stations.some(s => s.ip);
@@ -511,28 +580,29 @@ function renderPrintStatus(order){
 }
 
 
-let historyOverrides = {}; // orderId -> true (force expanded) | false (force collapsed)
-
 function formatClockTime(ts){
   return new Date(ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
 }
 
 async function renderKitchen(){
-  const el = document.getElementById('kitchenView');
+  // DATA layer: poll orders, manage alarm/print/known-id bookkeeping, then hand off to the view renderer.
   const list = await loadOrders();
   if(list === null){
     // The request failed (network hiccup, auth issue, etc). Don't wipe an
     // already-rendered board — old orders would look "new" again on the next
     // successful poll and wrongly re-trigger the alarm. But if we've never
     // rendered anything yet, at least show a clear message instead of blank.
+    const el = document.getElementById('kitchenView');
     if(!el.innerHTML.trim()){
       el.innerHTML = '<div style="padding:20px;color:var(--red);font-weight:700;">⚠️ Could not load orders. If a login prompt appeared, please fill it in. Retrying automatically…</div>';
     }
     return;
   }
 
+  latestOrdersList = list;
+  lastOrdersList = list; // kept for the network-print helpers defined earlier in the file
+
   const currentIds = new Set(list.map(o=>o.id));
-  lastOrdersList = list;
   if(!firstLoad){
     const newOrders = list.filter(o=>!knownOrderIds.has(o.id));
     if(newOrders.length) playLoudAlarm();
@@ -542,145 +612,80 @@ async function renderKitchen(){
   // on that very first render and never be detected as "new" again. Instead, print
   // any sufficiently recent order (created within the last 2 minutes) that we
   // haven't already tried — networkPrintAttempted still guards against duplicates.
-  list.forEach(o=>{
-    if(!networkPrintAttempted.has(o.id) && (Date.now() - o.createdAt) < 120000){
-      attemptNetworkPrint(o);
-    }
-  });
+  if(printEnabled){
+    list.forEach(o=>{
+      if(!networkPrintAttempted.has(o.id) && (Date.now() - o.createdAt) < 120000){
+        attemptNetworkPrint(o);
+      }
+    });
+  }
   knownOrderIds = currentIds;
   firstLoad = false;
 
-  const groups = {pending:[], confirmed:[]};
-  list.slice().sort((a,b)=>b.createdAt-a.createdAt).forEach(o=>{
-    if(o.status === 'pending') groups.pending.push(o);
-    else groups.confirmed.push(o);
-  });
-  hasPendingOrders = groups.pending.length > 0;
+  hasPendingOrders = list.some(o=>o.status==='pending');
   if(!hasPendingOrders) stopAlarm();
 
-  const colDefs = [
-    {key:'pending', label:'New — Needs Time', empty:'No new orders', rot:'r1'},
-    {key:'confirmed', label:'History', empty:'No confirmed orders yet', rot:'r2'},
-  ];
+  renderCurrentView();
+}
 
-  let html = `
+function renderCurrentView(){
+  const tabs = document.getElementById('bottomTabs');
+  document.querySelectorAll('.bottom-tab-btn').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.tab === currentView);
+  });
+  if(tabs) tabs.style.display = (currentView === 'detail') ? 'none' : 'flex';
+
+  if(currentView === 'detail'){
+    const order = latestOrdersList.find(o=>o.id === currentDetailOrderId);
+    if(!order){ currentView = 'list'; currentDetailOrderId = null; renderListView(); return; }
+    renderDetailView(order);
+  } else if(currentView === 'settings'){
+    renderSettingsView();
+  } else {
+    renderListView();
+  }
+}
+
+function openDetail(orderId){
+  currentDetailOrderId = orderId;
+  currentView = 'detail';
+  renderCurrentView();
+}
+
+function renderListView(){
+  const el = document.getElementById('kitchenView');
+  const pending = latestOrdersList.filter(o=>o.status==='pending').sort((a,b)=>b.createdAt-a.createdAt);
+  const history = latestOrdersList.filter(o=>o.status!=='pending').sort((a,b)=>b.createdAt-a.createdAt);
+
+  function rowsHtml(arr, emptyMsg){
+    if(!arr.length) return `<div class="col-empty">${emptyMsg}</div>`;
+    return arr.map(o=>`
+      <div class="compact-row" data-open-id="${o.id}">
+        <div>
+          <div class="compact-row-name">${o.isNewCustomer?'⭐ ':''}${o.name?escapeHtml(o.name):(o.phone?escapeHtml(o.phone):'Guest')}</div>
+          <div class="compact-row-sub">#${o.num} · ${timeAgo(o.createdAt)}${o.pickupTime ? ' · Pickup '+o.pickupTime : ''}</div>
+        </div>
+        <div class="compact-row-amount">$${Number(o.total).toFixed(2)}</div>
+      </div>`).join('');
+  }
+
+  el.innerHTML = `
     <div class="kitchen-head">
-      <h1><span class="wheel-icon"></span>Incoming Orders</h1>
-      <div style="display:flex;align-items:center;gap:12px;">
-        <button class="sound-toggle" id="testAlarmBtn">🔊 Test Alarm</button>
+      <h1><span class="wheel-icon"></span>Orders</h1>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="sound-toggle" id="testAlarmBtn">🔊 Test</button>
         <button class="sound-toggle" id="soundToggle"></button>
-        <div class="refresh-note" id="lastRefresh"></div>
       </div>
     </div>
-    <div class="columns">`;
-
-  colDefs.forEach(col=>{
-    html += `<div class="col ${col.key}"><div class="col-head"><span class="dot"></span>${col.label} (${groups[col.key].length})</div>`;
-    if(groups[col.key].length===0){
-      html += `<div class="col-empty">${col.empty}</div>`;
-    } else {
-      groups[col.key].forEach(o=>{
-        const isFresh = col.key==='pending' && (Date.now()-o.createdAt < 60000);
-        const isHistory = col.key !== 'pending';
-        let isExpanded;
-        if(!isHistory){
-          isExpanded = true;
-        } else if(Object.prototype.hasOwnProperty.call(historyOverrides, o.id)){
-          isExpanded = historyOverrides[o.id];
-        } else {
-          isExpanded = !!(o.pickupTimestamp && Date.now() < o.pickupTimestamp);
-        }
-
-        if(isHistory && !isExpanded){
-          // Compact one-line view for already-confirmed orders — tap to see full details.
-          html += `<div class="ticket ticket-compact" data-toggle-id="${o.id}">
-            <div class="ticket-compact-row">
-              <span class="ticket-num">#${o.num}</span>
-              <span class="ticket-compact-mid">${o.name ? escapeHtml(o.name) : (o.phone ? escapeHtml(o.phone) : '')}${o.pickupTime ? ' · ⏱'+o.pickupTime : ''}</span>
-              <span class="ticket-compact-total">$${Number(o.total).toFixed(2)}</span>
-            </div>
-            <div class="ticket-compact-time">${formatClockTime(o.createdAt)} (${timeAgo(o.createdAt)}) · tap to view ▾</div>
-          </div>`;
-          return;
-        }
-
-        const itemsHtml = o.items.map(it=>{
-          const opts = it.options ? Object.entries(it.options).map(([label,val])=>{
-            if(Array.isArray(val)){
-              return val.map(v=>`<div class="item-sub">– ${escapeHtml(v)}</div>`).join('');
-            }
-            return `<div class="item-sub">${escapeHtml(val)}</div>`;
-          }).join('') : '';
-          const itemNote = it.note ? `<div class="item-sub">Note: ${escapeHtml(it.note)}</div>` : '';
-          return `<li><div><span><span class="q">×${it.qty}</span>${escapeHtml(it.name)}</span>${opts}${itemNote}</div><span>$${it.price*it.qty}</span></li>`;
-        }).join('');
-        const noteHtml = o.note ? `<div class="ticket-note">Note: ${escapeHtml(o.note)}</div>` : '';
-        const phoneHtml = o.phone ? `📞 <a href="tel:${escapeHtml(o.phone.replace(/[^0-9+]/g,''))}">${escapeHtml(o.phone)}</a>` : '';
-        const emailHtml = o.email ? `<div class="ticket-email">✉ ${escapeHtml(o.email)}</div>` : '';
-        const firstOrderBadge = o.isNewCustomer ? `<div class="first-order-badge">⭐ 1st order</div>` : '';
-        const firstOrderTip = o.isNewCustomer ? `<div class="first-order-tip">First time order! You may want to confirm with this client by calling.</div>` : '';
-        const nameHtml = (o.name || o.phone) ? `<div class="ticket-name">${o.name ? escapeHtml(o.name) : ''}${o.name && o.phone ? ' · ' : ''}${phoneHtml}</div>` : '';
-        const tagsHtml = `<div class="ticket-tags">
-          <span class="ticket-tag solid">${escapeHtml(o.location||'Pickup')}</span>
-          <span class="ticket-tag outline">${o.paid ? '✅ Paid Online' : 'Card at pickup counter'}</span>
-        </div>`;
-
-        let bodyHtml = '';
-        if(col.key === 'pending'){
-          const sel = pendingSelections[o.id] || {};
-          const preview = computePickupLabel(sel);
-          const minutesVal = sel.offsetMinutes || 15;
-          bodyHtml = `
-            <div class="needs-time">⏱ Set a pickup time to confirm</div>
-            <div class="pickup-stepper">
-              <span class="clock-ic">⏱</span>
-              <input type="number" min="1" class="minutes-stepper-input" data-id="${o.id}" value="${minutesVal}">
-              <span class="unit">min</span>
-            </div>
-            <div class="time-picks">
-              ${QUICK_MINUTES.map(m=>`<div class="time-pick ${sel.offsetMinutes===m?'selected':''}" data-id="${o.id}" data-mins="${m}">+${m} min</div>`).join('')}
-            </div>
-            <div class="custom-time-row">
-              <input type="time" data-id="${o.id}" class="custom-time-input" value="${sel.customTime||''}">
-            </div>
-            <div class="ticket-actions">
-              <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
-              <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>${preview? 'Accept · '+preview : 'Pick a time'}</button>
-            </div>`;
-        } else {
-          const badge = o.pickupTime ? `<div class="pickup-badge"><span class="clock">⏱</span>Pickup ${o.pickupTime}</div>` : '';
-          bodyHtml = `${badge}<div class="ticket-actions">
-              <button class="tk-btn collapse-btn" data-collapse-id="${o.id}" style="width:100%;">Collapse ▴</button>
-            </div>`;
-        }
-
-        html += `<div class="ticket ${col.key==='pending'?'urgent':''}">
-          ${isFresh?'<div class="badge-new">NEW</div>':''}
-          <div class="ticket-top">
-            <div class="ticket-num">#${o.num}</div>
-            <div class="ticket-time">${formatClockTime(o.createdAt)} · ${timeAgo(o.createdAt)}</div>
-          </div>
-          ${tagsHtml}
-          ${firstOrderBadge}
-          ${nameHtml}
-          ${emailHtml}
-          ${o.deliveryAddress ? `<div class="ticket-email">📍 ${escapeHtml(o.deliveryAddress)}</div>` : ''}
-          ${firstOrderTip}
-          <ul class="ticket-items">${itemsHtml}</ul>
-          ${noteHtml}
-          ${o.subtotal!=null ? `<div class="ticket-total"><span>Subtotal</span><span>$${Number(o.subtotal).toFixed(2)}</span></div>
-          <div class="ticket-total"><span>Tax</span><span>$${Number(o.tax||0).toFixed(2)}</span></div>` : ''}
-          <div class="ticket-total grand"><span>Total</span><span>$${Number(o.total).toFixed(2)}</span></div>
-          ${renderPrintStatus(o)}
-          ${bodyHtml}
-        </div>`;
-      });
-    }
-    html += `</div>`;
-  });
-  html += `</div>`;
-  el.innerHTML = html;
-  document.getElementById('lastRefresh').textContent = 'Last refreshed '+new Date().toLocaleTimeString('en-US')+' — Printer IP: '+((window.SITE_INFO && window.SITE_INFO.localPrinterIp) ? window.SITE_INFO.localPrinterIp : 'not set');
+    <div class="list-section">
+      <div class="list-section-head"><span class="dot" style="background:var(--red);"></span>New Orders (${pending.length})</div>
+      ${rowsHtml(pending, 'No new orders')}
+    </div>
+    <div class="list-section">
+      <div class="list-section-head"><span class="dot" style="background:var(--green-deep);"></span>History (${history.length})</div>
+      ${rowsHtml(history, 'No orders yet today')}
+    </div>
+  `;
 
   const soundBtn = document.getElementById('soundToggle');
   soundBtn.textContent = soundEnabled ? '🔔 Sound On' : '🔕 Sound Off';
@@ -688,39 +693,123 @@ async function renderKitchen(){
   soundBtn.onclick = ()=>{
     soundEnabled = !soundEnabled;
     if(soundEnabled){ tryUnlockAudio(); playLoudAlarm(); }
-    renderKitchen();
+    renderListView();
   };
-  document.getElementById('testAlarmBtn').onclick = ()=>{
-    tryUnlockAudio();
-    playLoudAlarm();
+  document.getElementById('testAlarmBtn').onclick = ()=>{ tryUnlockAudio(); playLoudAlarm(); };
+
+  el.querySelectorAll('[data-open-id]').forEach(row=>{
+    row.onclick = ()=> openDetail(row.dataset.openId);
+  });
+}
+
+function renderDetailView(o){
+  const el = document.getElementById('kitchenView');
+  const isPending = o.status === 'pending';
+
+  const itemsHtml = o.items.map(it=>{
+    const opts = it.options ? Object.entries(it.options).map(([label,val])=>{
+      if(Array.isArray(val)){
+        return val.map(v=>`<div class="item-sub">– ${escapeHtml(v)}</div>`).join('');
+      }
+      return `<div class="item-sub">${escapeHtml(val)}</div>`;
+    }).join('') : '';
+    const itemNote = it.note ? `<div class="item-sub">Note: ${escapeHtml(it.note)}</div>` : '';
+    return `<li><div><span><span class="q">×${it.qty}</span>${escapeHtml(it.name)}</span>${opts}${itemNote}</div><span>$${it.price*it.qty}</span></li>`;
+  }).join('');
+  const noteHtml = o.note ? `<div class="ticket-note">Note: ${escapeHtml(o.note)}</div>` : '';
+  const phoneHtml = o.phone ? `📞 <a href="tel:${escapeHtml(o.phone.replace(/[^0-9+]/g,''))}">${escapeHtml(o.phone)}</a>` : '';
+  const emailHtml = o.email ? `<div class="ticket-email">✉ ${escapeHtml(o.email)}</div>` : '';
+  const firstOrderBadge = o.isNewCustomer ? `<div class="first-order-badge">⭐ 1st order</div>` : '';
+  const firstOrderTip = o.isNewCustomer ? `<div class="first-order-tip">First time order! You may want to confirm with this client by calling.</div>` : '';
+  const nameHtml = (o.name || o.phone) ? `<div class="ticket-name">${o.name ? escapeHtml(o.name) : ''}${o.name && o.phone ? ' · ' : ''}${phoneHtml}</div>` : '';
+  const tagsHtml = `<div class="ticket-tags">
+    <span class="ticket-tag solid">${escapeHtml(o.location||'Pickup')}</span>
+    <span class="ticket-tag outline">${o.paid ? '✅ Paid Online' : 'Card at pickup counter'}</span>
+  </div>`;
+
+  let bodyHtml = '';
+  if(isPending){
+    const sel = pendingSelections[o.id] || {};
+    const preview = computePickupLabel(sel);
+    const minutesVal = sel.offsetMinutes || 15;
+    bodyHtml = `
+      <div class="needs-time">⏱ Set a pickup time to confirm</div>
+      <div class="pickup-stepper">
+        <span class="clock-ic">⏱</span>
+        <input type="number" min="1" class="minutes-stepper-input" data-id="${o.id}" value="${minutesVal}">
+        <span class="unit">min</span>
+      </div>
+      <div class="time-picks">
+        ${QUICK_MINUTES.map(m=>`<div class="time-pick ${sel.offsetMinutes===m?'selected':''}" data-id="${o.id}" data-mins="${m}">+${m} min</div>`).join('')}
+      </div>
+      <div class="custom-time-row">
+        <input type="time" data-id="${o.id}" class="custom-time-input" value="${sel.customTime||''}">
+      </div>
+      <div class="ticket-actions">
+        <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
+        <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>${preview? 'Accept · '+preview : 'Pick a time'}</button>
+      </div>`;
+  } else {
+    const badge = o.pickupTime ? `<div class="pickup-badge"><span class="clock">⏱</span>Pickup ${o.pickupTime}</div>` : '';
+    bodyHtml = `${badge}`;
+  }
+
+  el.innerHTML = `
+    <div class="detail-topbar">
+      <button class="detail-back-btn" id="detailBackBtn">←</button>
+      <div class="detail-topbar-title">Order #${o.num}</div>
+    </div>
+    <div class="detail-body">
+      <div class="ticket ${isPending?'urgent':''}">
+        <div class="ticket-top">
+          <div class="ticket-num">#${o.num}</div>
+          <div class="ticket-time">${formatClockTime(o.createdAt)} · ${timeAgo(o.createdAt)}</div>
+        </div>
+        ${tagsHtml}
+        ${firstOrderBadge}
+        ${nameHtml}
+        ${emailHtml}
+        ${o.deliveryAddress ? `<div class="ticket-email">📍 ${escapeHtml(o.deliveryAddress)}</div>` : ''}
+        ${firstOrderTip}
+        <ul class="ticket-items">${itemsHtml}</ul>
+        ${noteHtml}
+        ${o.subtotal!=null ? `<div class="ticket-total"><span>Subtotal</span><span>$${Number(o.subtotal).toFixed(2)}</span></div>
+        <div class="ticket-total"><span>Tax</span><span>$${Number(o.tax||0).toFixed(2)}</span></div>` : ''}
+        <div class="ticket-total grand"><span>Total</span><span>$${Number(o.total).toFixed(2)}</span></div>
+        ${renderPrintStatus(o)}
+        ${bodyHtml}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('detailBackBtn').onclick = ()=>{
+    currentView = 'list';
+    currentDetailOrderId = null;
+    renderCurrentView();
   };
 
-  // quick time pick buttons
   el.querySelectorAll('.time-pick').forEach(btn=>{
     btn.onclick = ()=>{
       const id = btn.dataset.id, mins = Number(btn.dataset.mins);
       pendingSelections[id] = {offsetMinutes:mins, customTime:null};
-      renderKitchen();
+      renderDetailView(o);
     };
   });
-  // minutes stepper (the round pill "N min" input)
   el.querySelectorAll('.minutes-stepper-input').forEach(inp=>{
     inp.onchange = ()=>{
       const id = inp.dataset.id;
       const mins = Math.max(1, Number(inp.value) || 1);
       pendingSelections[id] = {offsetMinutes:mins, customTime:null};
-      renderKitchen();
+      renderDetailView(o);
     };
   });
-  // custom time input
   el.querySelectorAll('.custom-time-input').forEach(inp=>{
     inp.onchange = ()=>{
       const id = inp.dataset.id;
       pendingSelections[id] = {offsetMinutes:null, customTime:inp.value};
-      renderKitchen();
+      renderDetailView(o);
     };
   });
-  // reject a pending order outright (no pickup time offered)
   el.querySelectorAll('[data-reject-id]').forEach(btn=>{
     btn.onclick = async ()=>{
       const id = btn.dataset.rejectId;
@@ -728,27 +817,16 @@ async function renderKitchen(){
       try{
         await fetch('/api/orders/'+id, {method:'DELETE'});
         delete pendingSelections[id];
+        currentView = 'list';
+        currentDetailOrderId = null;
         renderKitchen();
       }catch(e){ console.error(e); alert('Could not reject this order — please try again.'); }
-    };
-  });
-  // confirm pickup time -> sends time to customer, moves order to History, stops the alarm
-  el.querySelectorAll('[data-toggle-id]').forEach(card=>{
-    card.onclick = ()=>{
-      historyOverrides[card.dataset.toggleId] = true;
-      renderKitchen();
-    };
-  });
-  el.querySelectorAll('[data-collapse-id]').forEach(btn=>{
-    btn.onclick = ()=>{
-      historyOverrides[btn.dataset.collapseId] = false;
-      renderKitchen();
     };
   });
   el.querySelectorAll('[data-print-id]').forEach(btn=>{
     btn.onclick = ()=>{
       const id = btn.dataset.printId;
-      const order = lastOrdersList.find(o=>o.id===id);
+      const order = latestOrdersList.find(x=>x.id===id);
       if(order) attemptNetworkPrint(order);
     };
   });
@@ -780,6 +858,8 @@ async function renderKitchen(){
           return;
         }
         delete pendingSelections[id];
+        currentView = 'list';
+        currentDetailOrderId = null;
         renderKitchen();
       }catch(e){
         console.error(e);
@@ -789,17 +869,114 @@ async function renderKitchen(){
       }
     };
   });
-  // remove from history
-  el.querySelectorAll('.tk-btn.archive').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const id = btn.dataset.id;
-      try{
-        await fetch('/api/orders/'+id, {method:'DELETE'});
-        renderKitchen();
-      }catch(e){ console.error(e); }
-    };
-  });
 }
+
+async function renderSettingsView(){
+  const el = document.getElementById('kitchenView');
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const todayOrders = latestOrdersList.filter(o=>o.createdAt >= todayStart.getTime());
+  const todayRevenue = todayOrders.reduce((sum,o)=>sum+Number(o.total||0),0);
+  const todayConfirmed = todayOrders.filter(o=>o.status!=='pending').length;
+
+  el.innerHTML = `
+    <div class="kitchen-head"><h1>Settings</h1></div>
+    <div class="settings-view">
+      <div class="settings-section">
+        <div class="settings-section-title">End of Day Report</div>
+        <div class="eod-stats">
+          <div class="eod-stat-card"><div class="eod-stat-num">${todayOrders.length}</div><div class="eod-stat-label">Orders Today</div></div>
+          <div class="eod-stat-card"><div class="eod-stat-num">$${todayRevenue.toFixed(2)}</div><div class="eod-stat-label">Revenue Today</div></div>
+        </div>
+        <div class="eod-stats">
+          <div class="eod-stat-card"><div class="eod-stat-num">${todayConfirmed}</div><div class="eod-stat-label">Confirmed</div></div>
+          <div class="eod-stat-card"><div class="eod-stat-num">${todayOrders.length - todayConfirmed}</div><div class="eod-stat-label">Still Pending</div></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Printing</div>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Auto-print new orders</div>
+              <div class="settings-row-sub">Turn off to hide the Print button everywhere</div>
+            </div>
+            <button class="toggle-switch ${printEnabled?'on':''}" id="printToggleBtn"><span class="knob"></span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Menu Items — Sold Out</div>
+        <div class="settings-card" id="soldOutList"><div class="settings-row"><div class="settings-row-label">Loading menu…</div></div></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Language</div>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div class="settings-row-label">Display Language</div>
+            <select id="languageSelect" disabled style="padding:6px 10px;border-radius:8px;border:1px solid var(--line);color:var(--stone);background:var(--page-bg);">
+              <option>English</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-row-sub" style="padding:6px 4px 0;">Coming soon</div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('printToggleBtn').onclick = async ()=>{
+    printEnabled = !printEnabled;
+    try{
+      await fetch('/api/kitchen-settings', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ printEnabled })
+      });
+    }catch(e){ console.error(e); }
+    renderSettingsView();
+  };
+
+  try{
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    const menu = cfg.menu || [];
+    const listEl = document.getElementById('soldOutList');
+    let rows = '';
+    menu.forEach(sec=>{
+      (sec.items||[]).forEach(it=>{
+        rows += `<div class="settings-row">
+          <div class="settings-row-label">${escapeHtml(it.name)}</div>
+          <button class="toggle-switch ${it.soldOut?'on':''}" data-dish-id="${it.id}"><span class="knob"></span></button>
+        </div>`;
+      });
+    });
+    listEl.innerHTML = rows || '<div class="settings-row"><div class="settings-row-label">No menu items found</div></div>';
+    listEl.querySelectorAll('[data-dish-id]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const nowOn = !btn.classList.contains('on');
+        btn.classList.toggle('on', nowOn);
+        try{
+          await fetch('/api/menu-soldout', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ dishId: btn.dataset.dishId, soldOut: nowOn })
+          });
+        }catch(e){ console.error(e); }
+      };
+    });
+  }catch(e){
+    const listEl = document.getElementById('soldOutList');
+    if(listEl) listEl.innerHTML = '<div class="settings-row"><div class="settings-row-label">Could not load menu items.</div></div>';
+  }
+}
+
+document.querySelectorAll('.bottom-tab-btn').forEach(btn=>{
+  btn.onclick = ()=>{
+    currentView = btn.dataset.tab;
+    currentDetailOrderId = null;
+    renderCurrentView();
+  };
+});
 
 async function loadSiteInfo(){
   try{
@@ -810,6 +987,7 @@ async function loadSiteInfo(){
         document.getElementById('brandName').textContent = cfg.siteInfo.name || 'AJI SUSHI';
         document.getElementById('brandTag').textContent = cfg.siteInfo.tagline || '';
         window.SITE_INFO = cfg.siteInfo;
+        printEnabled = cfg.siteInfo.printEnabled !== false;
       }
     }
   }catch(e){}
