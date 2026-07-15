@@ -115,15 +115,14 @@
     .brand-center strong{ font-size:32px; }
   }
   .cat-rail{
-    display:flex;flex-wrap:wrap;gap:8px;overflow-x:hidden;overflow-y:auto;
-    max-height:84px;align-content:flex-start;
-    padding:16px 4px 12px;
+    display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;
+    padding:16px 4px 20px;
     position:sticky;top:71px;z-index:15;background:var(--page-bg);
     border-bottom:1px solid var(--line);
     box-shadow:0 4px 10px -6px rgba(0,0,0,0.15);
     scrollbar-width:thin;scrollbar-color:var(--stone-light) transparent;
   }
-  .cat-rail::-webkit-scrollbar{width:6px;display:block;}
+  .cat-rail::-webkit-scrollbar{height:6px;width:auto;display:block;}
   .cat-rail::-webkit-scrollbar-track{background:transparent;}
   .cat-rail::-webkit-scrollbar-thumb{background:var(--stone-light);border-radius:10px;}
   .cat-rail::-webkit-scrollbar-thumb:hover{background:var(--orange);}

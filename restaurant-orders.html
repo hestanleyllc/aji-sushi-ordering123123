@@ -210,6 +210,7 @@
   .settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);gap:10px;}
   .settings-row:last-child{border-bottom:none;}
   .settings-row-label{font-size:14.5px;font-weight:600;color:var(--ink);}
+  .sold-out-name{font-size:16px;font-weight:800;}
   .settings-row-sub{font-size:11.5px;color:var(--stone);margin-top:2px;}
   .toggle-switch{
     position:relative;width:48px;height:28px;border-radius:100px;background:var(--line);border:none;cursor:pointer;flex:none;transition:background .2s;padding:0;
@@ -584,7 +585,7 @@ function formatClockTime(ts){
   return new Date(ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
 }
 
-async function renderKitchen(){
+async function renderKitchen(isPoll){
   // DATA layer: poll orders, manage alarm/print/known-id bookkeeping, then hand off to the view renderer.
   const list = await loadOrders();
   if(list === null){
@@ -625,15 +626,21 @@ async function renderKitchen(){
   hasPendingOrders = list.some(o=>o.status==='pending');
   if(!hasPendingOrders) stopAlarm();
 
-  renderCurrentView();
+  renderCurrentView(isPoll);
 }
 
-function renderCurrentView(){
+function renderCurrentView(fromPoll){
   const tabs = document.getElementById('bottomTabs');
   document.querySelectorAll('.bottom-tab-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === currentView);
   });
   if(tabs) tabs.style.display = (currentView === 'detail') ? 'none' : 'flex';
+
+  // Background polling (every second) must never rebuild the Detail or Settings
+  // screens — doing so would wipe out whatever the user is typing/scrolling and
+  // caused the "settings keeps flickering" bug. Only the compact list view is
+  // cheap/safe to silently refresh in the background.
+  if(fromPoll && currentView !== 'list') return;
 
   if(currentView === 'detail'){
     const order = latestOrdersList.find(o=>o.id === currentDetailOrderId);
@@ -656,6 +663,7 @@ function renderListView(){
   const el = document.getElementById('kitchenView');
   const pending = latestOrdersList.filter(o=>o.status==='pending').sort((a,b)=>b.createdAt-a.createdAt);
   const history = latestOrdersList.filter(o=>o.status!=='pending').sort((a,b)=>b.createdAt-a.createdAt);
+  const showSoundControls = localStorage.getItem('showSoundControls') === '1';
 
   function rowsHtml(arr, emptyMsg){
     if(!arr.length) return `<div class="col-empty">${emptyMsg}</div>`;
@@ -672,10 +680,11 @@ function renderListView(){
   el.innerHTML = `
     <div class="kitchen-head">
       <h1><span class="wheel-icon"></span>Orders</h1>
+      ${showSoundControls ? `
       <div style="display:flex;align-items:center;gap:10px;">
         <button class="sound-toggle" id="testAlarmBtn">🔊 Test</button>
         <button class="sound-toggle" id="soundToggle"></button>
-      </div>
+      </div>` : ''}
     </div>
     <div class="list-section">
       <div class="list-section-head"><span class="dot" style="background:var(--red);"></span>New Orders (${pending.length})</div>
@@ -687,15 +696,17 @@ function renderListView(){
     </div>
   `;
 
-  const soundBtn = document.getElementById('soundToggle');
-  soundBtn.textContent = soundEnabled ? '🔔 Sound On' : '🔕 Sound Off';
-  soundBtn.classList.toggle('off', !soundEnabled);
-  soundBtn.onclick = ()=>{
-    soundEnabled = !soundEnabled;
-    if(soundEnabled){ tryUnlockAudio(); playLoudAlarm(); }
-    renderListView();
-  };
-  document.getElementById('testAlarmBtn').onclick = ()=>{ tryUnlockAudio(); playLoudAlarm(); };
+  if(showSoundControls){
+    const soundBtn = document.getElementById('soundToggle');
+    soundBtn.textContent = soundEnabled ? '🔔 Sound On' : '🔕 Sound Off';
+    soundBtn.classList.toggle('off', !soundEnabled);
+    soundBtn.onclick = ()=>{
+      soundEnabled = !soundEnabled;
+      if(soundEnabled){ tryUnlockAudio(); playLoudAlarm(); }
+      renderListView();
+    };
+    document.getElementById('testAlarmBtn').onclick = ()=>{ tryUnlockAudio(); playLoudAlarm(); };
+  }
 
   el.querySelectorAll('[data-open-id]').forEach(row=>{
     row.onclick = ()=> openDetail(row.dataset.openId);
@@ -858,9 +869,7 @@ function renderDetailView(o){
           return;
         }
         delete pendingSelections[id];
-        currentView = 'list';
-        currentDetailOrderId = null;
-        renderKitchen();
+        await renderKitchen();
       }catch(e){
         console.error(e);
         alert('Network error confirming this order. Please check your connection and try again.');
@@ -871,12 +880,16 @@ function renderDetailView(o){
   });
 }
 
+let menuItemsExpanded = false;
+let printStationsExpanded = false;
+
 async function renderSettingsView(){
   const el = document.getElementById('kitchenView');
   const todayStart = new Date(); todayStart.setHours(0,0,0,0);
   const todayOrders = latestOrdersList.filter(o=>o.createdAt >= todayStart.getTime());
   const todayRevenue = todayOrders.reduce((sum,o)=>sum+Number(o.total||0),0);
   const todayConfirmed = todayOrders.filter(o=>o.status!=='pending').length;
+  const showSoundControls = localStorage.getItem('showSoundControls') === '1';
 
   el.innerHTML = `
     <div class="kitchen-head"><h1>Settings</h1></div>
@@ -894,8 +907,21 @@ async function renderSettingsView(){
       </div>
 
       <div class="settings-section">
-        <div class="settings-section-title">Printing</div>
+        <div class="settings-section-title">Sound</div>
         <div class="settings-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Show Test Alarm / Sound On buttons</div>
+              <div class="settings-row-sub">Off = hidden from the Orders page</div>
+            </div>
+            <button class="toggle-switch ${showSoundControls?'on':''}" id="soundControlsToggleBtn"><span class="knob"></span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Printing</div>
+        <div class="settings-card" style="margin-bottom:10px;">
           <div class="settings-row">
             <div>
               <div class="settings-row-label">Auto-print new orders</div>
@@ -904,11 +930,21 @@ async function renderSettingsView(){
             <button class="toggle-switch ${printEnabled?'on':''}" id="printToggleBtn"><span class="knob"></span></button>
           </div>
         </div>
+        <div class="settings-card">
+          <div class="settings-row" id="printStationsHeader" style="cursor:pointer;">
+            <div class="settings-row-label">Printer Stations & Setup ${printStationsExpanded?'▾':'▸'}</div>
+          </div>
+          ${printStationsExpanded ? `<div id="printStationsBody" style="padding:0 16px 16px;"><div class="settings-row-sub">Loading…</div></div>` : ''}
+        </div>
       </div>
 
       <div class="settings-section">
-        <div class="settings-section-title">Menu Items — Sold Out</div>
-        <div class="settings-card" id="soldOutList"><div class="settings-row"><div class="settings-row-label">Loading menu…</div></div></div>
+        <div class="settings-card">
+          <div class="settings-row" id="menuItemsHeader" style="cursor:pointer;">
+            <div class="settings-row-label">Menu Items — Sold Out ${menuItemsExpanded?'▾':'▸'}</div>
+          </div>
+          ${menuItemsExpanded ? `<div id="soldOutList"><div class="settings-row"><div class="settings-row-label">Loading menu…</div></div></div>` : ''}
+        </div>
       </div>
 
       <div class="settings-section">
@@ -926,6 +962,12 @@ async function renderSettingsView(){
     </div>
   `;
 
+  document.getElementById('soundControlsToggleBtn').onclick = ()=>{
+    const nowOn = localStorage.getItem('showSoundControls') !== '1';
+    localStorage.setItem('showSoundControls', nowOn ? '1' : '0');
+    renderSettingsView();
+  };
+
   document.getElementById('printToggleBtn').onclick = async ()=>{
     printEnabled = !printEnabled;
     try{
@@ -937,36 +979,123 @@ async function renderSettingsView(){
     renderSettingsView();
   };
 
-  try{
-    const res = await fetch('/api/config');
-    const cfg = await res.json();
-    const menu = cfg.menu || [];
-    const listEl = document.getElementById('soldOutList');
-    let rows = '';
-    menu.forEach(sec=>{
-      (sec.items||[]).forEach(it=>{
-        rows += `<div class="settings-row">
-          <div class="settings-row-label">${escapeHtml(it.name)}</div>
-          <button class="toggle-switch ${it.soldOut?'on':''}" data-dish-id="${it.id}"><span class="knob"></span></button>
-        </div>`;
+  document.getElementById('menuItemsHeader').onclick = ()=>{
+    menuItemsExpanded = !menuItemsExpanded;
+    renderSettingsView();
+  };
+  document.getElementById('printStationsHeader').onclick = ()=>{
+    printStationsExpanded = !printStationsExpanded;
+    renderSettingsView();
+  };
+
+  if(menuItemsExpanded){
+    try{
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      const menu = cfg.menu || [];
+      const listEl = document.getElementById('soldOutList');
+      let rows = '';
+      menu.forEach(sec=>{
+        (sec.items||[]).forEach(it=>{
+          rows += `<div class="settings-row">
+            <div class="settings-row-label sold-out-name">${escapeHtml(it.name)}</div>
+            <button class="toggle-switch ${it.soldOut?'on':''}" data-dish-id="${it.id}"><span class="knob"></span></button>
+          </div>`;
+        });
       });
-    });
-    listEl.innerHTML = rows || '<div class="settings-row"><div class="settings-row-label">No menu items found</div></div>';
-    listEl.querySelectorAll('[data-dish-id]').forEach(btn=>{
-      btn.onclick = async ()=>{
-        const nowOn = !btn.classList.contains('on');
-        btn.classList.toggle('on', nowOn);
+      listEl.innerHTML = rows || '<div class="settings-row"><div class="settings-row-label">No menu items found</div></div>';
+      listEl.querySelectorAll('[data-dish-id]').forEach(btn=>{
+        btn.onclick = async ()=>{
+          const nowOn = !btn.classList.contains('on');
+          btn.classList.toggle('on', nowOn);
+          try{
+            await fetch('/api/menu-soldout', {
+              method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ dishId: btn.dataset.dishId, soldOut: nowOn })
+            });
+          }catch(e){ console.error(e); }
+        };
+      });
+    }catch(e){
+      const listEl = document.getElementById('soldOutList');
+      if(listEl) listEl.innerHTML = '<div class="settings-row"><div class="settings-row-label">Could not load menu items.</div></div>';
+    }
+  }
+
+  if(printStationsExpanded){
+    try{
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      const stations = cfg.printStations || [];
+      const defaultIp = (cfg.siteInfo && cfg.siteInfo.localPrinterIp) || '';
+      const bodyEl = document.getElementById('printStationsBody');
+      bodyEl.innerHTML = `
+        <div class="settings-row-sub" style="margin-bottom:8px;">Default printer (used when a dish has no station routing)</div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <input id="defaultPrinterIpInput" value="${escapeHtml(defaultIp)}" placeholder="192.168.1.50" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);">
+          <button class="tk-btn confirm" id="saveDefaultIpBtn" style="flex:0 0 70px;padding:9px;font-size:12px;">Save</button>
+        </div>
+        <div class="settings-row-sub" style="margin-bottom:8px;">Extra stations (e.g. Kitchen, Sushi Bar) — each dish can be routed to one in the admin Menu editor</div>
+        <div id="stationsList"></div>
+        <button class="tk-btn collapse-btn" id="addStationBtn" style="width:100%;margin-top:10px;">+ Add Printer Station</button>
+      `;
+
+      function renderStationsList(list){
+        const wrap = document.getElementById('stationsList');
+        if(!list.length){ wrap.innerHTML = '<div class="settings-row-sub">No extra stations yet.</div>'; return; }
+        wrap.innerHTML = list.map((s,i)=>`
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+            <input data-si="${i}" data-field="name" value="${escapeHtml(s.name||'')}" placeholder="Station name" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);font-size:13px;">
+            <input data-si="${i}" data-field="ip" value="${escapeHtml(s.ip||'')}" placeholder="Local IP" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);font-size:13px;">
+            <button data-si="${i}" class="tk-btn reject" data-del-station="${i}" style="flex:0 0 40px;padding:8px;">✕</button>
+          </div>`).join('');
+        wrap.querySelectorAll('input').forEach(inp=>{
+          inp.onchange = ()=>{
+            const i = Number(inp.dataset.si);
+            list[i][inp.dataset.field] = inp.value.trim();
+            saveStations(list);
+          };
+        });
+        wrap.querySelectorAll('[data-del-station]').forEach(btn=>{
+          btn.onclick = ()=>{
+            list.splice(Number(btn.dataset.delStation), 1);
+            saveStations(list);
+            renderStationsList(list);
+          };
+        });
+      }
+
+      async function saveStations(list){
         try{
-          await fetch('/api/menu-soldout', {
+          await fetch('/api/kitchen-print-stations', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ dishId: btn.dataset.dishId, soldOut: nowOn })
+            body: JSON.stringify({ stations: list })
           });
         }catch(e){ console.error(e); }
+      }
+
+      renderStationsList(stations);
+
+      document.getElementById('addStationBtn').onclick = ()=>{
+        stations.push({ name:'New Station', printerId:'', ip:'' });
+        saveStations(stations);
+        renderStationsList(stations);
       };
-    });
-  }catch(e){
-    const listEl = document.getElementById('soldOutList');
-    if(listEl) listEl.innerHTML = '<div class="settings-row"><div class="settings-row-label">Could not load menu items.</div></div>';
+      document.getElementById('saveDefaultIpBtn').onclick = async ()=>{
+        const ip = document.getElementById('defaultPrinterIpInput').value.trim();
+        try{
+          await fetch('/api/kitchen-settings', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ localPrinterIp: ip })
+          });
+          if(window.SITE_INFO) window.SITE_INFO.localPrinterIp = ip;
+          alert('Saved.');
+        }catch(e){ alert('Could not save — please try again.'); }
+      };
+    }catch(e){
+      const bodyEl = document.getElementById('printStationsBody');
+      if(bodyEl) bodyEl.innerHTML = '<div class="settings-row-sub">Could not load printer settings.</div>';
+    }
   }
 }
 
@@ -1003,9 +1132,9 @@ function connectLiveUpdates(){
         if(msg.type === 'new-order'){
           knownOrderIds.add(msg.order.id);
           playLoudAlarm();
-          renderKitchen();
+          renderKitchen(true);
         } else if(msg.type === 'order-updated'){
-          renderKitchen();
+          renderKitchen(true);
         }
       }catch(err){}
     };
@@ -1019,7 +1148,7 @@ refreshAudioUnlockBanner();
 loadSiteInfo();
 renderKitchen();
 connectLiveUpdates();
-setInterval(renderKitchen, 1000);
+setInterval(()=>renderKitchen(true), 1000);
 setInterval(loadSiteInfo, 20000);
 setInterval(()=>{ if(hasPendingOrders) playLoudAlarm(); }, 1000);
 </script>

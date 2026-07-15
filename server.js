@@ -596,8 +596,25 @@ app.post('/api/kitchen-settings', requireKitchenAuth, (req, res) => {
   if(typeof body.printEnabled === 'boolean'){
     data.config.siteInfo.printEnabled = body.printEnabled;
   }
+  if(typeof body.localPrinterIp === 'string'){
+    data.config.siteInfo.localPrinterIp = body.localPrinterIp.trim();
+  }
   saveData();
-  res.json({ ok: true, printEnabled: data.config.siteInfo.printEnabled });
+  res.json({ ok: true, printEnabled: data.config.siteInfo.printEnabled, localPrinterIp: data.config.siteInfo.localPrinterIp });
+});
+
+// ---- Printer stations, manageable directly from the kitchen board's Settings tab ----
+app.post('/api/kitchen-print-stations', requireKitchenAuth, (req, res) => {
+  const body = req.body || {};
+  if(!Array.isArray(body.stations)) return res.status(400).json({ error: 'stations array is required' });
+  data.config.printStations = body.stations.map(s => ({
+    id: s.id || ('st_' + Date.now() + '_' + Math.floor(Math.random()*100000)),
+    name: String(s.name || '').trim(),
+    printerId: String(s.printerId || '').trim(),
+    ip: String(s.ip || '').trim(),
+  })).filter(s => s.name);
+  saveData();
+  res.json({ ok: true, printStations: data.config.printStations });
 });
 
 // ---- Quick sold-out toggle from the kitchen board (no need to open the full admin menu editor) ----
