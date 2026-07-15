@@ -115,13 +115,15 @@
     .brand-center strong{ font-size:32px; }
   }
   .cat-rail{
-    display:flex;gap:8px;overflow-x:auto;padding:16px 0 20px;
+    display:flex;flex-wrap:wrap;gap:8px;overflow-x:hidden;overflow-y:auto;
+    max-height:84px;align-content:flex-start;
+    padding:16px 4px 12px;
     position:sticky;top:71px;z-index:15;background:var(--page-bg);
     border-bottom:1px solid var(--line);
     box-shadow:0 4px 10px -6px rgba(0,0,0,0.15);
     scrollbar-width:thin;scrollbar-color:var(--stone-light) transparent;
   }
-  .cat-rail::-webkit-scrollbar{height:6px;display:block;}
+  .cat-rail::-webkit-scrollbar{width:6px;display:block;}
   .cat-rail::-webkit-scrollbar-track{background:transparent;}
   .cat-rail::-webkit-scrollbar-thumb{background:var(--stone-light);border-radius:10px;}
   .cat-rail::-webkit-scrollbar-thumb:hover{background:var(--orange);}
@@ -163,6 +165,17 @@
   .qty-btn.add:hover{background:var(--pink);border-color:var(--pink);}
   .qty-num{white-space:nowrap;font-family:'Inter',sans-serif;font-weight:600;font-size:11.5px;color:var(--stone);}
 
+  .site-footer{
+    border-top:1px solid var(--line);margin-top:20px;padding:28px 20px 120px;
+    text-align:center;background:var(--paper-deep);
+  }
+  .site-footer-inner{max-width:720px;margin:0 auto;}
+  .site-footer-brand{
+    font-family:'Inter',sans-serif;font-weight:800;font-size:15px;letter-spacing:0.04em;
+    color:var(--ink);margin-bottom:6px;
+  }
+  .site-footer-line{font-size:11.5px;color:var(--stone);}
+  .site-footer-credit{color:var(--orange);font-weight:700;}
   .cart-fab{
     position:fixed;left:16px;right:16px;bottom:16px;max-width:688px;margin:0 auto;
     background:var(--orange);color:#fff;border-radius:14px;padding:16px 20px;
@@ -306,6 +319,12 @@
 
 <div class="closed-banner" id="closedBanner"></div>
 <div class="customer" id="customerView"></div>
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <div class="site-footer-brand" id="footerBrandName">AJI SUSHI</div>
+    <div class="site-footer-line">Powered by <span class="site-footer-credit">H.E Stanley</span></div>
+  </div>
+</footer>
 <div class="cart-fab" id="cartFab" style="display:none;">
   <span><span class="count" id="cartCount">0</span>View order</span>
   <span id="cartTotal" class="mono">$0</span>
@@ -2722,6 +2741,7 @@ function applySiteInfo(){
   document.getElementById('brandNameCenter').textContent = SITE.name;
   document.getElementById('heroBrandName').textContent = SITE.name;
   document.getElementById('heroTagline').textContent = SITE.tagline || '';
+  document.getElementById('footerBrandName').textContent = SITE.name;
   document.title = SITE.name + ' · Order Online';
 }
 
@@ -3093,12 +3113,12 @@ function renderDrawer(showConfirm){
         <input id="customerName" placeholder="For pickup call-out" />
       </div>
       <div class="field">
-        <label>Phone Number</label>
-        <input id="customerPhone" type="tel" placeholder="e.g. (555) 123-4567" />
+        <label>Phone Number *</label>
+        <input id="customerPhone" type="tel" required placeholder="e.g. (555) 123-4567" />
       </div>
       <div class="field">
-        <label>Email (for your pickup confirmation)</label>
-        <input id="customerEmail" type="email" placeholder="you@example.com" />
+        <label>Email (for your pickup confirmation) *</label>
+        <input id="customerEmail" type="email" required placeholder="you@example.com" />
       </div>
       <div class="field" id="deliveryAddressField" style="${orderMode==='delivery'?'':'display:none;'}">
         <label>Delivery Address</label>
@@ -3249,6 +3269,23 @@ function buildOrderPayload(){
 }
 
 async function submitOrder(){
+  const phone = document.getElementById('customerPhone').value.trim();
+  const email = document.getElementById('customerEmail').value.trim();
+  if(!phone){
+    alert('Please enter a phone number so we can reach you about your order.');
+    document.getElementById('customerPhone').focus();
+    return;
+  }
+  if(!email){
+    alert('Please enter an email address so we can send your pickup confirmation.');
+    document.getElementById('customerEmail').focus();
+    return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    alert('That email address doesn\'t look right — please double check it.');
+    document.getElementById('customerEmail').focus();
+    return;
+  }
   const btn = document.getElementById('submitOrder');
   btn.disabled = true; btn.textContent = 'Sending…';
   const payload = buildOrderPayload();
