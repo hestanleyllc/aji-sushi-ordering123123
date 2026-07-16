@@ -3083,19 +3083,21 @@ function renderDrawer(showConfirm){
         return `<div class="sub">${escapeHtml(label)}: ${escapeHtml(val)}</div>`;
       }).join('');
       const noteLine = ci.note ? `<div class="sub">Note: ${escapeHtml(ci.note)}</div>` : '';
-      html += `<div class="cart-line" style="align-items:flex-start;">
-        <div>
+      html += `<div class="cart-line" style="align-items:flex-start;gap:10px;">
+        <div style="flex:1;min-width:0;">
           <div class="name">${escapeHtml(ci.name)}</div>
           ${optLines}
           ${noteLine}
-          <div class="sub" style="margin-top:4px;">
+        </div>
+        <div style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          <div class="mono">$${(ci.price*ci.qty).toFixed(2)}</div>
+          <div style="display:flex;align-items:center;">
             <span class="qty-btn" data-act="lineDec" data-lineid="${ci.lineId}" style="display:inline-flex;width:22px;height:22px;font-size:13px;">−</span>
             <span class="mono" style="margin:0 8px;">${ci.qty}</span>
             <span class="qty-btn add" data-act="lineInc" data-lineid="${ci.lineId}" style="display:inline-flex;width:22px;height:22px;font-size:13px;">+</span>
-            <span data-act="lineRemove" data-lineid="${ci.lineId}" style="margin-left:12px;color:var(--pink);font-weight:700;cursor:pointer;">Remove</span>
           </div>
+          <span data-act="lineRemove" data-lineid="${ci.lineId}" style="font-size:11px;color:var(--pink);font-weight:700;cursor:pointer;">Remove</span>
         </div>
-        <div class="mono">$${(ci.price*ci.qty).toFixed(2)}</div>
       </div>`;
     });
     html += `
