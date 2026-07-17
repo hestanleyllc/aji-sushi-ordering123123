@@ -116,7 +116,7 @@
   .ticket-items .q{font-family:'Inter',sans-serif;color:var(--stone);margin-right:6px;font-weight:600;}
   .ticket-items .item-sub{font-size:11.5px;color:var(--stone);margin:3px 0 0 20px;}
   .ticket-note{font-size:12px;background:#FFF9E8;border:1px solid #F5E5B8;padding:7px 9px;border-radius:8px;margin-bottom:10px;color:#8A6D00;}
-  .items-divider{height:2px;background:var(--red);margin:10px 0;border-radius:2px;}
+  .items-divider{height:2px;background:var(--divider-color, var(--red));margin:10px 0;border-radius:2px;}
   .ticket-total{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:8px;color:var(--stone);}
   .ticket-total.grand{font-size:15px;font-weight:800;color:var(--ink);padding-top:8px;border-top:1px solid var(--line);margin-bottom:12px;}
   .pickup-badge{
@@ -210,8 +210,11 @@
     background:none;border:none;font-size:28px;color:var(--ink);cursor:pointer;padding:2px 6px 2px 0;line-height:1;
   }
   .detail-topbar-title{font-size:19px;font-weight:800;color:var(--ink);}
-  .detail-body{padding:16px 16px 140px;min-height:100vh;box-sizing:border-box;}
+  .detail-body{padding:0 20px 140px;min-height:100vh;box-sizing:border-box;background:var(--card);}
   @media (min-width: 700px){ .detail-body{max-width:560px;margin:0 auto;} }
+  .detail-body .ticket{
+    border:none;border-radius:0;box-shadow:none;background:transparent;padding:20px 0;margin-bottom:0;
+  }
   .detail-body .ticket-num{font-size:28px;}
   .detail-body .ticket-time{font-size:14px;}
   .detail-body .ticket-tag{font-size:12.5px;padding:7px 14px;}
@@ -267,6 +270,12 @@ let firstLoad = true;
 let audioUnlocked = false;
 let pendingSelections = {}; // orderId -> {offsetMinutes, customTime}
 let currentView = 'list'; // 'list' | 'detail' | 'settings'
+
+function applyDividerColor(){
+  const saved = localStorage.getItem('dividerColor');
+  if(saved) document.documentElement.style.setProperty('--divider-color', saved);
+}
+applyDividerColor();
 
 // ---- Web Push notifications ----
 function isStandalone(){
@@ -875,17 +884,16 @@ function renderDetailView(o){
     };
   });
   el.querySelectorAll('.custom-time-input').forEach(inp=>{
-    inp.onchange = ()=>{
+    inp.oninput = ()=>{
       const id = inp.dataset.id;
       const mins = parseInt(inp.value, 10);
-      if(!mins || mins < 1){
-        if(inp.value.trim()) alert('Please enter a number of minutes, like 15.');
-        pendingSelections[id] = {offsetMinutes:null, customTime:null};
-        renderDetailView(o);
-        return;
-      }
-      pendingSelections[id] = {offsetMinutes: mins, customTime:null};
-      renderDetailView(o);
+      const valid = !!mins && mins >= 1;
+      pendingSelections[id] = valid ? {offsetMinutes: mins, customTime:null} : {offsetMinutes:null, customTime:null};
+      // Update the Accept button directly instead of re-rendering the whole
+      // view — a full re-render on every keystroke would steal focus from
+      // the input and make it feel unresponsive.
+      const confirmBtn = el.querySelector(`.tk-btn.confirm[data-id="${id}"]`);
+      if(confirmBtn) confirmBtn.disabled = !valid;
     };
   });
   el.querySelectorAll('[data-reject-id]').forEach(btn=>{
@@ -1036,6 +1044,19 @@ async function renderSettingsView(){
       </div>
 
       <div class="settings-section">
+        <div class="settings-section-title">Appearance</div>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Divider line color</div>
+              <div class="settings-row-sub">The lines around the dish list on the order detail page</div>
+            </div>
+            <input type="color" id="dividerColorInput" value="${localStorage.getItem('dividerColor') || '#FF3B30'}" style="width:44px;height:36px;border:none;border-radius:8px;padding:0;background:none;">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="settings-section-title">Language</div>
         <div class="settings-card">
           <div class="settings-row">
@@ -1065,6 +1086,11 @@ async function renderSettingsView(){
     const nowOn = localStorage.getItem('showSoundControls') !== '1';
     localStorage.setItem('showSoundControls', nowOn ? '1' : '0');
     renderSettingsView();
+  };
+
+  document.getElementById('dividerColorInput').oninput = (e)=>{
+    localStorage.setItem('dividerColor', e.target.value);
+    applyDividerColor();
   };
 
   document.getElementById('printToggleBtn').onclick = async ()=>{
