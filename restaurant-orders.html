@@ -146,8 +146,9 @@
   }
   .time-pick.selected{background:var(--ink);border-color:var(--ink);color:#fff;}
   .custom-time-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
-  .custom-time-row input[type="time"]{
-    flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);font-family:'Inter',sans-serif;font-size:13px;
+  .custom-time-row input[type="text"]{
+    flex:1;padding:14px;border-radius:10px;border:1.5px solid var(--line);font-family:'Inter',sans-serif;
+    font-size:17px;font-weight:700;text-align:center;
   }
   .ticket-actions{display:flex;gap:8px;}
   .tk-btn{
@@ -205,11 +206,22 @@
     background:var(--card);position:sticky;top:0;z-index:20;
   }
   .detail-back-btn{
-    background:none;border:none;font-size:22px;color:var(--ink);cursor:pointer;padding:2px 6px 2px 0;line-height:1;
+    background:none;border:none;font-size:28px;color:var(--ink);cursor:pointer;padding:2px 6px 2px 0;line-height:1;
   }
-  .detail-topbar-title{font-size:16px;font-weight:800;color:var(--ink);}
+  .detail-topbar-title{font-size:19px;font-weight:800;color:var(--ink);}
   .detail-body{padding:16px 16px 140px;min-height:100vh;box-sizing:border-box;}
   @media (min-width: 700px){ .detail-body{max-width:560px;margin:0 auto;} }
+  .detail-body .ticket-num{font-size:28px;}
+  .detail-body .ticket-time{font-size:14px;}
+  .detail-body .ticket-tag{font-size:12.5px;padding:7px 14px;}
+  .detail-body .ticket-name{font-size:19px;}
+  .detail-body .ticket-email{font-size:14px;}
+  .detail-body .ticket-items li{font-size:17px;padding:12px 0;}
+  .detail-body .item-sub{font-size:13.5px;}
+  .detail-body .ticket-total{font-size:15px;}
+  .detail-body .ticket-total.grand{font-size:20px;}
+  .detail-body .tk-btn{padding:18px;font-size:17px;}
+  .detail-body .tk-btn.reject{font-size:22px;flex:0 0 64px;}
 
   .settings-view{padding:0 16px 90px;max-width:560px;margin:0 auto;}
   .settings-section{margin-bottom:22px;}
@@ -335,11 +347,17 @@ function tryUnlockAudio(){
   const audio = document.getElementById('alarmAudio');
   if(!audio) return;
   if(audioUnlocked) return;
+  // Play the alarm clip on an endless loop at near-zero volume from the moment
+  // it's unlocked, instead of starting/stopping playback every time we need to
+  // ring. iOS aggressively throttles JS timers and playback that starts/stops
+  // repeatedly in a background tab, which is what caused the choppy, dropped-out
+  // sound before. A continuously *playing* audio session is much less likely to
+  // get throttled — so alerts just turn the volume up/down instead of restarting.
+  audio.loop = true;
+  audio.volume = 0.01;
   const p = audio.play();
   if(p && p.then){
     p.then(()=>{
-      audio.pause();
-      audio.currentTime = 0;
       audioUnlocked = true;
       refreshAudioUnlockBanner();
     }).catch(()=>{ /* still locked — will retry on the next tap */ });
@@ -354,39 +372,26 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible') tryUnlockAudio();
 });
 
-let activeAlarmIntervals = [];
+let alertVolumeTimeout = null;
 function stopAlarm(){
-  activeAlarmIntervals.forEach(id => clearInterval(id));
-  activeAlarmIntervals = [];
+  if(alertVolumeTimeout){ clearTimeout(alertVolumeTimeout); alertVolumeTimeout = null; }
   const audio = document.getElementById('alarmAudio');
-  if(audio){ audio.pause(); audio.currentTime = 0; }
+  if(audio && audioUnlocked) audio.volume = 0.01;
 }
 
 function playLoudAlarm(){
   if(!soundEnabled) return;
   const audio = document.getElementById('alarmAudio');
-  if(audio){
-    if(!audioUnlocked){
-      tryUnlockAudio(); // may still be silently blocked until a real tap happens
-    } else {
-      let repeatsLeft = 5;
-      const playOnce = ()=>{
-        audio.currentTime = 0;
-        const p = audio.play();
-        if(p && p.catch) p.catch(err=>console.warn('alarm play failed', err));
-      };
-      playOnce();
-      const repeatId = setInterval(()=>{
-        repeatsLeft--;
-        if(repeatsLeft <= 0){
-          clearInterval(repeatId);
-          activeAlarmIntervals = activeAlarmIntervals.filter(id=>id!==repeatId);
-          return;
-        }
-        playOnce();
-      }, 900);
-      activeAlarmIntervals.push(repeatId);
-    }
+  if(!audio) return;
+  if(!audioUnlocked){
+    tryUnlockAudio(); // may still be silently blocked until a real tap happens
+  } else {
+    audio.volume = 1.0;
+    if(alertVolumeTimeout) clearTimeout(alertVolumeTimeout);
+    alertVolumeTimeout = setTimeout(()=>{
+      audio.volume = 0.01;
+      alertVolumeTimeout = null;
+    }, 4500);
   }
   if(navigator.vibrate){ navigator.vibrate([300,100,300,100,300,100,300,100,300]); }
 }
@@ -436,6 +441,21 @@ function computePickupTimestamp(sel){
     return Date.now() + sel.offsetMinutes*60000;
   }
   return null;
+}
+
+function parseManualTime(raw){
+  if(!raw) return null;
+  const str = raw.trim().toLowerCase().replace(/\s+/g,'').replace(/\./g,'');
+  const m = str.match(/^(\d{1,2}):?(\d{2})(am|pm)?$/);
+  if(!m) return null;
+  let h = parseInt(m[1],10);
+  const mins = parseInt(m[2],10);
+  const ampm = m[3];
+  if(isNaN(h) || isNaN(mins) || mins > 59) return null;
+  if(ampm === 'pm' && h < 12) h += 12;
+  if(ampm === 'am' && h === 12) h = 0;
+  if(h > 23) return null;
+  return String(h).padStart(2,'0') + ':' + String(mins).padStart(2,'0');
 }
 
 function escapeHtml(str){
@@ -767,7 +787,7 @@ function renderListView(){
     soundBtn.classList.toggle('off', !soundEnabled);
     soundBtn.onclick = ()=>{
       soundEnabled = !soundEnabled;
-      if(soundEnabled){ tryUnlockAudio(); playLoudAlarm(); }
+      if(soundEnabled){ tryUnlockAudio(); playLoudAlarm(); } else { stopAlarm(); }
       renderListView();
     };
     document.getElementById('testAlarmBtn').onclick = ()=>{ tryUnlockAudio(); playLoudAlarm(); };
@@ -809,7 +829,7 @@ function renderDetailView(o){
     const preview = computePickupLabel(sel);
     bodyHtml = `
       <div class="custom-time-row">
-        <input type="time" data-id="${o.id}" class="custom-time-input" value="${sel.customTime||''}">
+        <input type="text" inputmode="numeric" placeholder="e.g. 3:45 PM" data-id="${o.id}" class="custom-time-input" value="${escapeHtml(sel.customTimeDisplay||'')}">
       </div>
       <div class="ticket-actions">
         <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
@@ -873,7 +893,14 @@ function renderDetailView(o){
   el.querySelectorAll('.custom-time-input').forEach(inp=>{
     inp.onchange = ()=>{
       const id = inp.dataset.id;
-      pendingSelections[id] = {offsetMinutes:null, customTime:inp.value};
+      const parsed = parseManualTime(inp.value);
+      if(!parsed){
+        if(inp.value.trim()) alert('Please enter a time like "3:45 PM" or "15:45".');
+        pendingSelections[id] = {offsetMinutes:null, customTime:null, customTimeDisplay: inp.value};
+        renderDetailView(o);
+        return;
+      }
+      pendingSelections[id] = {offsetMinutes:null, customTime:parsed, customTimeDisplay: inp.value};
       renderDetailView(o);
     };
   });
@@ -1194,6 +1221,40 @@ document.querySelectorAll('.bottom-tab-btn').forEach(btn=>{
     renderCurrentView();
   };
 });
+
+// Swipe right from the left edge of the screen to go back to the main
+// Orders list, on any page other than the list itself (mimics iOS's
+// native "swipe from the edge to go back" gesture).
+(function setupSwipeBack(){
+  const EDGE_ZONE = 30;       // must start the touch within this many px of the left edge
+  const SWIPE_THRESHOLD = 80; // must move right at least this many px to count as "back"
+  const MAX_VERTICAL = 60;    // ignore mostly-vertical swipes (scrolling)
+  let startX = null, startY = null, startedAtEdge = false;
+
+  document.addEventListener('touchstart', (e)=>{
+    if(currentView === 'list') return;
+    if(e.touches.length !== 1) return;
+    const t = e.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    startedAtEdge = t.clientX <= EDGE_ZONE;
+  }, {passive:true});
+
+  document.addEventListener('touchend', (e)=>{
+    if(!startedAtEdge || startX === null || currentView === 'list'){
+      startX = null; startedAtEdge = false; return;
+    }
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = Math.abs(t.clientY - startY);
+    if(dx > SWIPE_THRESHOLD && dy < MAX_VERTICAL){
+      currentView = 'list';
+      currentDetailOrderId = null;
+      renderCurrentView();
+    }
+    startX = null; startedAtEdge = false;
+  }, {passive:true});
+})();
 
 async function loadSiteInfo(){
   try{
