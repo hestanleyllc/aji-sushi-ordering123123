@@ -150,6 +150,7 @@
     flex:1;padding:14px;border-radius:10px;border:1.5px solid var(--line);font-family:'Inter',sans-serif;
     font-size:17px;font-weight:700;text-align:center;
   }
+  .minutes-suffix{font-size:15px;font-weight:700;color:var(--stone);flex:none;}
   .ticket-actions{display:flex;gap:8px;}
   .tk-btn{
     flex:1;padding:13px;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;
@@ -369,9 +370,9 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible') tryUnlockAudio();
 });
 
-let alarmStopTimeout = null;
+let alarmActive = false;
 function stopAlarm(){
-  if(alarmStopTimeout){ clearTimeout(alarmStopTimeout); alarmStopTimeout = null; }
+  alarmActive = false;
   const audio = document.getElementById('alarmAudio');
   if(audio){ audio.pause(); audio.currentTime = 0; audio.loop = false; }
 }
@@ -382,22 +383,14 @@ function playLoudAlarm(){
   if(!audio) return;
   if(!audioUnlocked){
     tryUnlockAudio(); // may still be silently blocked until a real tap happens
-  } else {
-    // Use the browser's native loop instead of a JS setInterval restarting
-    // playback every ~900ms — that repeated start/stop was what caused the
-    // choppy sound. A single play() with loop=true repeats smoothly on its own.
-    audio.loop = true;
-    audio.currentTime = 0;
-    const p = audio.play();
-    if(p && p.catch) p.catch(err=>console.warn('alarm play failed', err));
-    if(alarmStopTimeout) clearTimeout(alarmStopTimeout);
-    alarmStopTimeout = setTimeout(()=>{
-      audio.pause();
-      audio.currentTime = 0;
-      audio.loop = false;
-      alarmStopTimeout = null;
-    }, 4500);
+    return;
   }
+  if(alarmActive) return; // already ringing continuously — don't restart it (that's what caused the choppy sound before)
+  audio.loop = true;
+  audio.currentTime = 0;
+  const p = audio.play();
+  if(p && p.catch) p.catch(err=>console.warn('alarm play failed', err));
+  alarmActive = true;
   if(navigator.vibrate){ navigator.vibrate([300,100,300,100,300,100,300,100,300]); }
 }
 
@@ -446,21 +439,6 @@ function computePickupTimestamp(sel){
     return Date.now() + sel.offsetMinutes*60000;
   }
   return null;
-}
-
-function parseManualTime(raw){
-  if(!raw) return null;
-  const str = raw.trim().toLowerCase().replace(/\s+/g,'').replace(/\./g,'');
-  const m = str.match(/^(\d{1,2}):?(\d{2})(am|pm)?$/);
-  if(!m) return null;
-  let h = parseInt(m[1],10);
-  const mins = parseInt(m[2],10);
-  const ampm = m[3];
-  if(isNaN(h) || isNaN(mins) || mins > 59) return null;
-  if(ampm === 'pm' && h < 12) h += 12;
-  if(ampm === 'am' && h === 12) h = 0;
-  if(h > 23) return null;
-  return String(h).padStart(2,'0') + ':' + String(mins).padStart(2,'0');
 }
 
 function escapeHtml(str){
@@ -834,7 +812,8 @@ function renderDetailView(o){
     const preview = computePickupLabel(sel);
     bodyHtml = `
       <div class="custom-time-row">
-        <input type="text" inputmode="numeric" placeholder="e.g. 3:45 PM" data-id="${o.id}" class="custom-time-input" value="${escapeHtml(sel.customTimeDisplay||'')}">
+        <input type="text" inputmode="numeric" placeholder="Minutes, e.g. 15" data-id="${o.id}" class="custom-time-input" value="${sel.offsetMinutes||''}">
+        <span class="minutes-suffix">min</span>
       </div>
       <div class="ticket-actions">
         <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
@@ -898,14 +877,14 @@ function renderDetailView(o){
   el.querySelectorAll('.custom-time-input').forEach(inp=>{
     inp.onchange = ()=>{
       const id = inp.dataset.id;
-      const parsed = parseManualTime(inp.value);
-      if(!parsed){
-        if(inp.value.trim()) alert('Please enter a time like "3:45 PM" or "15:45".');
-        pendingSelections[id] = {offsetMinutes:null, customTime:null, customTimeDisplay: inp.value};
+      const mins = parseInt(inp.value, 10);
+      if(!mins || mins < 1){
+        if(inp.value.trim()) alert('Please enter a number of minutes, like 15.');
+        pendingSelections[id] = {offsetMinutes:null, customTime:null};
         renderDetailView(o);
         return;
       }
-      pendingSelections[id] = {offsetMinutes:null, customTime:parsed, customTimeDisplay: inp.value};
+      pendingSelections[id] = {offsetMinutes: mins, customTime:null};
       renderDetailView(o);
     };
   });
