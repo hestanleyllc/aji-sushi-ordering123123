@@ -347,17 +347,14 @@ function tryUnlockAudio(){
   const audio = document.getElementById('alarmAudio');
   if(!audio) return;
   if(audioUnlocked) return;
-  // Play the alarm clip on an endless loop at near-zero volume from the moment
-  // it's unlocked, instead of starting/stopping playback every time we need to
-  // ring. iOS aggressively throttles JS timers and playback that starts/stops
-  // repeatedly in a background tab, which is what caused the choppy, dropped-out
-  // sound before. A continuously *playing* audio session is much less likely to
-  // get throttled — so alerts just turn the volume up/down instead of restarting.
-  audio.loop = true;
-  audio.volume = 0.01;
+  // Just unlock playback capability — play then immediately pause. iOS does NOT
+  // support controlling volume via JavaScript (audio.volume is silently ignored
+  // on iPhone), so a real play()/pause() is the only reliable on/off switch.
   const p = audio.play();
   if(p && p.then){
     p.then(()=>{
+      audio.pause();
+      audio.currentTime = 0;
       audioUnlocked = true;
       refreshAudioUnlockBanner();
     }).catch(()=>{ /* still locked — will retry on the next tap */ });
@@ -372,11 +369,11 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible') tryUnlockAudio();
 });
 
-let alertVolumeTimeout = null;
+let alarmStopTimeout = null;
 function stopAlarm(){
-  if(alertVolumeTimeout){ clearTimeout(alertVolumeTimeout); alertVolumeTimeout = null; }
+  if(alarmStopTimeout){ clearTimeout(alarmStopTimeout); alarmStopTimeout = null; }
   const audio = document.getElementById('alarmAudio');
-  if(audio && audioUnlocked) audio.volume = 0.01;
+  if(audio){ audio.pause(); audio.currentTime = 0; audio.loop = false; }
 }
 
 function playLoudAlarm(){
@@ -386,11 +383,19 @@ function playLoudAlarm(){
   if(!audioUnlocked){
     tryUnlockAudio(); // may still be silently blocked until a real tap happens
   } else {
-    audio.volume = 1.0;
-    if(alertVolumeTimeout) clearTimeout(alertVolumeTimeout);
-    alertVolumeTimeout = setTimeout(()=>{
-      audio.volume = 0.01;
-      alertVolumeTimeout = null;
+    // Use the browser's native loop instead of a JS setInterval restarting
+    // playback every ~900ms — that repeated start/stop was what caused the
+    // choppy sound. A single play() with loop=true repeats smoothly on its own.
+    audio.loop = true;
+    audio.currentTime = 0;
+    const p = audio.play();
+    if(p && p.catch) p.catch(err=>console.warn('alarm play failed', err));
+    if(alarmStopTimeout) clearTimeout(alarmStopTimeout);
+    alarmStopTimeout = setTimeout(()=>{
+      audio.pause();
+      audio.currentTime = 0;
+      audio.loop = false;
+      alarmStopTimeout = null;
     }, 4500);
   }
   if(navigator.vibrate){ navigator.vibrate([300,100,300,100,300,100,300,100,300]); }
