@@ -12,6 +12,8 @@
   "dependencies": {
     "express": "^4.19.2",
     "nodemailer": "^6.9.13",
-    "stripe": "^16.9.0"
+    "stripe": "^16.9.0",
+    "twilio": "^5.3.0",
+    "web-push": "^3.6.7"
   }
 }

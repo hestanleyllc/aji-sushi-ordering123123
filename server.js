@@ -91,6 +91,55 @@ function checkUnconfirmedOrdersForCalls(){
 }
 setInterval(checkUnconfirmedOrdersForCalls, 60000);
 
+// ---- Web Push notifications (real system notifications for the kitchen board) ----
+let webpush = null;
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
+  webpush = require('web-push');
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY
+  );
+} else {
+  console.log('Push notifications disabled — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable them.');
+}
+
+async function notifyNewOrderPush(order){
+  if(!webpush) return;
+  const subs = data.pushSubscriptions || [];
+  if(!subs.length) return;
+  const payload = JSON.stringify({
+    title: '🔔 New order #' + order.num,
+    body: (order.name || order.phone || 'A customer') + ' — $' + Number(order.total).toFixed(2),
+    url: '/restaurant-orders.html',
+    tag: 'aji-order-' + order.id,
+  });
+  const results = await Promise.allSettled(
+    subs.map(sub => webpush.sendNotification(sub, payload))
+  );
+  const stillValid = [];
+  let changed = false;
+  results.forEach((result, i) => {
+    if(result.status === 'fulfilled'){
+      stillValid.push(subs[i]);
+    } else {
+      const err = result.reason;
+      if(err && (err.statusCode === 404 || err.statusCode === 410)){
+        changed = true; // subscription is gone — drop it
+      } else {
+        console.error('Push send failed', err && err.message);
+        stillValid.push(subs[i]); // keep it — might just be a transient error
+      }
+    }
+  });
+  if(changed){
+    data.pushSubscriptions = stillValid;
+    saveData();
+  }
+}
+
 
 const PRINTNODE_API_KEY = process.env.PRINTNODE_API_KEY;
 const PRINTNODE_PRINTER_ID = process.env.PRINTNODE_PRINTER_ID; // default/general printer, used as fallback
@@ -434,6 +483,17 @@ app.get('/customer-order.html', (req, res) => {
 app.get('/restaurant-orders.html', requireKitchenAuth, (req, res) => res.sendFile(path.join(__dirname, 'restaurant-orders.html')));
 app.get('/admin.html', requireAdminAuth, (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 
+// PWA files for the kitchen board (public — no sensitive data, and the
+// "Add to Home Screen" / service-worker install flow needs to fetch these
+// without necessarily carrying an authenticated session).
+app.get('/kitchen-manifest.json', (req, res) => res.sendFile(path.join(__dirname, 'kitchen-manifest.json')));
+app.get('/kitchen-sw.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript');
+  res.set('Service-Worker-Allowed', '/');
+  res.sendFile(path.join(__dirname, 'kitchen-sw.js'));
+});
+app.get('/kitchen-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'kitchen-icon.png')));
+
 // If DATA_DIR is set (e.g. pointing to a Render persistent disk mount path),
 // data.json is written there so it survives restarts and redeploys.
 // If not set, it falls back to the app folder (fine for local use, but ephemeral on Render).
@@ -489,7 +549,7 @@ if(useUpstash){
 }
 
 function freshData(){
-  return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 }, knownCustomers: {} };
+  return { config: DEFAULT_CONFIG, orders: [], dailyOrderCounter: { date: '', count: 0 }, knownCustomers: {}, pushSubscriptions: [] };
 }
 
 async function loadData(){
@@ -505,6 +565,7 @@ async function loadData(){
         if(!parsed.orders) parsed.orders = [];
         if(!parsed.dailyOrderCounter) parsed.dailyOrderCounter = { date: '', count: 0 };
         if(!parsed.knownCustomers) parsed.knownCustomers = {};
+        if(!parsed.pushSubscriptions) parsed.pushSubscriptions = [];
         return parsed;
       }
     }catch(e){ console.error('Failed to load from Upstash', e); }
@@ -517,6 +578,7 @@ async function loadData(){
     if(!parsed.orders) parsed.orders = [];
     if(!parsed.dailyOrderCounter) parsed.dailyOrderCounter = { date: '', count: 0 };
     if(!parsed.knownCustomers) parsed.knownCustomers = {};
+    if(!parsed.pushSubscriptions) parsed.pushSubscriptions = [];
     return parsed;
   }catch(e){
     return freshData();
@@ -615,6 +677,30 @@ app.post('/api/kitchen-print-stations', requireKitchenAuth, (req, res) => {
   })).filter(s => s.name);
   saveData();
   res.json({ ok: true, printStations: data.config.printStations });
+});
+
+// ---- Web Push subscription management ----
+app.get('/api/push-public-key', requireKitchenAuth, (req, res) => {
+  if(!VAPID_PUBLIC_KEY) return res.status(404).json({ error: 'Push notifications are not configured on this server.' });
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post('/api/push-subscribe', requireKitchenAuth, (req, res) => {
+  const sub = req.body;
+  if(!sub || !sub.endpoint) return res.status(400).json({ error: 'A valid push subscription is required' });
+  if(!data.pushSubscriptions) data.pushSubscriptions = [];
+  const already = data.pushSubscriptions.some(s => s.endpoint === sub.endpoint);
+  if(!already) data.pushSubscriptions.push(sub);
+  saveData();
+  res.json({ ok: true });
+});
+
+app.post('/api/push-unsubscribe', requireKitchenAuth, (req, res) => {
+  const { endpoint } = req.body || {};
+  if(!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+  data.pushSubscriptions = (data.pushSubscriptions || []).filter(s => s.endpoint !== endpoint);
+  saveData();
+  res.json({ ok: true });
 });
 
 // ---- Quick sold-out toggle from the kitchen board (no need to open the full admin menu editor) ----
@@ -919,6 +1005,7 @@ function createOrder(body, extra){
   sendNewOrderEmail(order);
   printOrderTicket(order);
   queueFreePrintJobs(order);
+  notifyNewOrderPush(order);
   return order;
 }
 
