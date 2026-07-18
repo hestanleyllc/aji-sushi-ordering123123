@@ -2582,6 +2582,18 @@ const DEFAULT_MENU = [
   }
 ];
 
+function choiceName(c){ return typeof c === 'string' ? c : (c && c.name) || ''; }
+function choicePrice(c){ return typeof c === 'string' ? 0 : Number((c && c.price) || 0); }
+function choiceToLine(c){
+  const name = choiceName(c), price = choicePrice(c);
+  return price ? `${name} +${price}` : name;
+}
+function parseChoiceLine(line){
+  const m = line.trim().match(/^(.+?)\s*\+\$?(\d+(?:\.\d+)?)\s*$/);
+  if(m) return { name: m[1].trim(), price: Number(m[2]) };
+  return { name: line.trim(), price: 0 };
+}
+
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -2657,6 +2669,21 @@ function renderSite(){
       <label>Kitchen Printer Local IP (for direct network printing, e.g. 192.168.1.50)</label>
       <input id="localPrinterIp" value="${escapeHtml(state.siteInfo.localPrinterIp||'')}" placeholder="192.168.1.50">
     </div>
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;">
+        <input type="checkbox" id="orderAlertEnabled" style="width:auto;flex:none;" ${state.siteInfo.orderAlertEnabled?'checked':''}> Call the restaurant if a new order isn't confirmed in time
+      </label>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <div class="field" style="flex:1;min-width:180px;margin-bottom:0;">
+        <label>Phone number to call</label>
+        <input id="orderAlertPhone" type="tel" value="${escapeHtml(state.siteInfo.orderAlertPhone||'')}" placeholder="+15551234567">
+      </div>
+      <div class="field" style="width:140px;margin-bottom:0;">
+        <label>Call after (minutes)</label>
+        <input id="orderAlertMinutes" type="number" min="1" value="${state.siteInfo.orderAlertMinutes!=null?state.siteInfo.orderAlertMinutes:5}">
+      </div>
+    </div>
   `;
   document.getElementById('siteName').oninput = (e)=>{ state.siteInfo.name = e.target.value; };
   document.getElementById('siteTagline').oninput = (e)=>{ state.siteInfo.tagline = e.target.value; };
@@ -2668,6 +2695,9 @@ function renderSite(){
   document.getElementById('taxRate').oninput = (e)=>{ state.siteInfo.taxRate = Number(e.target.value)||0; };
   document.getElementById('deliveryEnabled').onchange = (e)=>{ state.siteInfo.deliveryEnabled = e.target.checked; };
   document.getElementById('localPrinterIp').oninput = (e)=>{ state.siteInfo.localPrinterIp = e.target.value.trim(); };
+  document.getElementById('orderAlertEnabled').onchange = (e)=>{ state.siteInfo.orderAlertEnabled = e.target.checked; };
+  document.getElementById('orderAlertPhone').oninput = (e)=>{ state.siteInfo.orderAlertPhone = e.target.value.trim(); };
+  document.getElementById('orderAlertMinutes').oninput = (e)=>{ state.siteInfo.orderAlertMinutes = Number(e.target.value)||5; };
 }
 
 function renderSeo(){
@@ -2889,8 +2919,8 @@ function renderMenu(){
               ${g.type==='multi' ? `<input type="number" class="og-count" data-ci="${ci}" data-di="${di}" data-gi="${gi}" value="${g.count||1}" min="1">` : ''}
               <button class="icon-btn del" data-act="delGroup" data-ci="${ci}" data-di="${di}" data-gi="${gi}">✕</button>
             </div>
-            <label>Choices (one per line)</label>
-            <textarea class="og-choices" rows="4" data-ci="${ci}" data-di="${di}" data-gi="${gi}" placeholder="Miso Soup&#10;Salad">${escapeHtml((g.choices||[]).join('\n'))}</textarea>
+            <label>Choices (one per line — add "+2.50" at the end for an upcharge, e.g. "Beef +2.50")</label>
+            <textarea class="og-choices" rows="4" data-ci="${ci}" data-di="${di}" data-gi="${gi}" placeholder="Miso Soup&#10;Salad&#10;Beef +2.50">${escapeHtml((g.choices||[]).map(choiceToLine).join('\n'))}</textarea>
           </div>`;
       });
       html += `<button class="add-group-btn" data-act="addGroup" data-ci="${ci}" data-di="${di}">+ Add Option Group</button></div>`;
@@ -3154,7 +3184,7 @@ function bindMenuEvents(){
   document.querySelectorAll('.og-choices').forEach(ta=>{
     ta.oninput = ()=>{
       const {ci,di,gi} = ta.dataset;
-      state.menu[ci].items[di].optionGroups[gi].choices = ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
+      state.menu[ci].items[di].optionGroups[gi].choices = ta.value.split('\n').map(s=>s.trim()).filter(Boolean).map(parseChoiceLine);
     };
   });
 }

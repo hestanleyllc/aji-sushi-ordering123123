@@ -802,7 +802,7 @@ function renderDetailView(o){
       return `<div class="item-sub">${escapeHtml(val)}</div>`;
     }).join('') : '';
     const itemNote = it.note ? `<div class="item-sub">Note: ${escapeHtml(it.note)}</div>` : '';
-    return `<li><div><span><span class="q">×${it.qty}</span>${escapeHtml(it.name)}</span>${opts}${itemNote}</div><span>$${it.price*it.qty}</span></li>`;
+    return `<li><div><span><span class="q">${it.qty}×</span>${escapeHtml(it.name)}</span>${opts}${itemNote}</div><span>$${it.price*it.qty}</span></li>`;
   }).join('');
   const noteHtml = o.note ? `<div class="ticket-note">Note: ${escapeHtml(o.note)}</div>` : '';
   const phoneHtml = o.phone ? `📞 <a href="tel:${escapeHtml(o.phone.replace(/[^0-9+]/g,''))}">${escapeHtml(o.phone)}</a>` : '';

@@ -263,6 +263,7 @@
   }
   .option-choice.selected{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:700;}
   .option-choice input{pointer-events:none;accent-color:var(--orange);}
+  .option-price{margin-left:auto;font-weight:700;font-size:12px;opacity:0.85;}
   .qty-stepper-row{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:16px;}
   .qty-stepper-row .qty-btn{width:34px;height:34px;font-size:16px;}
   .qty-stepper-row .qty-display{font-family:'Inter',sans-serif;font-size:18px;font-weight:800;min-width:22px;text-align:center;}
@@ -2847,6 +2848,12 @@ function updateTrackingUI(order){
   }
 }
 
+function choiceName(c){ return typeof c === 'string' ? c : (c && c.name) || ''; }
+function choicePrice(c){ return typeof c === 'string' ? 0 : Number((c && c.price) || 0); }
+function findChoice(group, name){
+  return (group.choices||[]).find(c => choiceName(c) === name);
+}
+
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -2972,10 +2979,12 @@ function renderItemModal(){
       groupsHtml += `<div class="option-group">
         <div class="option-group-label">${escapeHtml(g.label)}<span class="option-group-hint">(${count}/${g.count} selected)</span></div>
         ${(g.choices||[]).map(c=>{
-          const isSel = sel.includes(c);
+          const name = choiceName(c);
+          const price = choicePrice(c);
+          const isSel = sel.includes(name);
           const disable = !isSel && count>=g.count;
-          return `<div class="option-choice ${isSel?'selected':''}" data-gid="${g.id}" data-choice="${escapeHtml(c)}" data-type="multi" style="${disable?'opacity:0.45;':''}">
-            <input type="checkbox" ${isSel?'checked':''} ${disable?'disabled':''}> ${escapeHtml(c)}
+          return `<div class="option-choice ${isSel?'selected':''}" data-gid="${g.id}" data-choice="${escapeHtml(name)}" data-type="multi" style="${disable?'opacity:0.45;':''}">
+            <input type="checkbox" ${isSel?'checked':''} ${disable?'disabled':''}> ${escapeHtml(name)}${price>0?` <span class="option-price">+$${price.toFixed(2)}</span>`:''}
           </div>`;
         }).join('')}
       </div>`;
@@ -2983,20 +2992,24 @@ function renderItemModal(){
       groupsHtml += `<div class="option-group">
         <div class="option-group-label">${escapeHtml(g.label)}</div>
         ${(g.choices||[]).map(c=>{
-          const isSel = sel===c;
-          return `<div class="option-choice ${isSel?'selected':''}" data-gid="${g.id}" data-choice="${escapeHtml(c)}" data-type="single">
-            <input type="radio" ${isSel?'checked':''}> ${escapeHtml(c)}
+          const name = choiceName(c);
+          const price = choicePrice(c);
+          const isSel = sel===name;
+          return `<div class="option-choice ${isSel?'selected':''}" data-gid="${g.id}" data-choice="${escapeHtml(name)}" data-type="single">
+            <input type="radio" ${isSel?'checked':''}> ${escapeHtml(name)}${price>0?` <span class="option-price">+$${price.toFixed(2)}</span>`:''}
           </div>`;
         }).join('')}
       </div>`;
     }
   });
   const canAdd = canAddItem();
+  const optionsPrice = computeSelectedOptionsPrice(dish);
+  const unitPrice = dish.price + optionsPrice;
   modal.innerHTML = `
     <div class="checker"></div>
     <h2>${escapeHtml(dish.name)}</h2>
     <div class="item-desc">${escapeHtml(dish.desc)}</div>
-    <div class="item-price mono">$${dish.price}</div>
+    <div class="item-price mono">$${unitPrice.toFixed(2)}</div>
     ${groupsHtml}
     <div class="field">
       <label>Note for this item (optional)</label>
@@ -3007,7 +3020,7 @@ function renderItemModal(){
       <div class="qty-display" id="modalQtyDisplay">${modalQty}</div>
       <div class="qty-btn add" id="modalInc">+</div>
     </div>
-    <button class="submit-btn" id="addItemBtn" ${canAdd?'':'disabled'}>Add to Cart — $${(dish.price*modalQty)}</button>
+    <button class="submit-btn" id="addItemBtn" ${canAdd?'':'disabled'}>Add to Cart — $${(unitPrice*modalQty).toFixed(2)}</button>
   `;
   document.getElementById('modalNoteInput').oninput = (e)=>{ modalNote = e.target.value; };
   document.getElementById('modalDec').onclick = ()=>{ if(modalQty>1){ modalQty--; renderItemModal(); } };
@@ -3033,6 +3046,23 @@ function renderItemModal(){
     addBtn.onclick = addModalItemToCart;
   }
 }
+function computeSelectedOptionsPrice(dish){
+  let total = 0;
+  (dish.optionGroups||[]).forEach(g=>{
+    const sel = modalSelections[g.id];
+    if(g.type==='multi'){
+      (sel||[]).forEach(name=>{
+        const c = findChoice(g, name);
+        if(c) total += choicePrice(c);
+      });
+    } else if(sel){
+      const c = findChoice(g, sel);
+      if(c) total += choicePrice(c);
+    }
+  });
+  return total;
+}
+
 function addModalItemToCart(){
   const dish = modalDish;
   if(!dish || !canAddItem()) return;
@@ -3041,9 +3071,10 @@ function addModalItemToCart(){
     const sel = modalSelections[g.id];
     options[g.label] = g.type==='multi' ? [...sel] : sel;
   });
+  const unitPrice = dish.price + computeSelectedOptionsPrice(dish);
   cartItems.push({
     lineId: 'ci_'+Date.now()+'_'+Math.floor(Math.random()*10000),
-    dishId: dish.id, name: dish.name, price: dish.price, category: modalCategory,
+    dishId: dish.id, name: dish.name, price: unitPrice, category: modalCategory,
     qty: modalQty, note: modalNote, options, printRouting: dish.printRouting || []
   });
   closeItemModal();
