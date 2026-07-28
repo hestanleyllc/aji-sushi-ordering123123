@@ -96,12 +96,20 @@ let webpush = null;
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 if(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY){
-  webpush = require('web-push');
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
-    VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY
-  );
+  try{
+    const wp = require('web-push');
+    wp.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
+      VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY
+    );
+    webpush = wp;
+  } catch(err){
+    // A malformed VAPID key must never crash the whole server — push
+    // notifications are an optional feature, not something the rest of the
+    // site (ordering, kitchen board, admin) depends on.
+    console.error('Push notifications disabled — VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY look invalid:', err.message);
+  }
 } else {
   console.log('Push notifications disabled — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable them.');
 }
@@ -456,7 +464,7 @@ app.get('/staff-login.html', (req, res) => {
 function escapeAttr(str){
   return String(str || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-function injectSeo(html, seo){
+function injectSeo(html, seo, siteInfo){
   if(!seo) return html;
   let out = html;
   if(seo.title){
@@ -469,6 +477,27 @@ function injectSeo(html, seo){
       out = out.replace('</head>', `  <meta name="description" content="${escapeAttr(seo.description)}">\n</head>`);
     }
   }
+  // Structured data (Schema.org Restaurant) — helps Google show hours, address,
+  // and rich local-search results instead of a plain blue link.
+  if(siteInfo && siteInfo.name){
+    const schema = {
+      "@context": "https://schema.org",
+      "@type": "Restaurant",
+      "name": siteInfo.name,
+      "servesCuisine": "Japanese, Sushi",
+      "url": "https://ajibrewster.com",
+      "telephone": (siteInfo.contact && siteInfo.contact.phone) || undefined,
+      "address": (siteInfo.contact && siteInfo.contact.address) ? {
+        "@type": "PostalAddress",
+        "streetAddress": siteInfo.contact.address
+      } : undefined,
+      "acceptsReservations": "False",
+      "menu": "https://ajibrewster.com/customer-order.html"
+    };
+    Object.keys(schema).forEach(k => schema[k] === undefined && delete schema[k]);
+    const scriptTag = `  <script type="application/ld+json">${JSON.stringify(schema)}</script>\n</head>`;
+    out = out.replace('</head>', scriptTag);
+  }
   return out;
 }
 
@@ -477,7 +506,7 @@ app.get('/customer-order.html', (req, res) => {
   fs.readFile(path.join(__dirname, 'customer-order.html'), 'utf8', (err, html) => {
     if(err) return res.status(500).send('Error loading page');
     res.set('Content-Type', 'text/html');
-    res.send(injectSeo(html, data.config.seo));
+    res.send(injectSeo(html, data.config.seo, data.config.siteInfo));
   });
 });
 app.get('/restaurant-orders.html', requireKitchenAuth, (req, res) => res.sendFile(path.join(__dirname, 'restaurant-orders.html')));
