@@ -829,7 +829,17 @@ function renderDetailView(o){
         <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>Accept</button>
       </div>`;
   } else {
-    bodyHtml = '';
+    // Manual POS-sync control — harmless to show even if the POS is set to
+    // auto-sync everything; it only matters when the POS's own "线上订单"
+    // setting is switched to manual mode, in which case THIS is what
+    // actually gets an order pulled in and printed.
+    if(o.posSynced){
+      bodyHtml = `<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">✅ 已同步到POS Synced to POS</button></div>`;
+    } else if(o.posSyncRequested){
+      bodyHtml = `<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">⏳ 等待POS同步 Waiting for POS…</button></div>`;
+    } else {
+      bodyHtml = `<div class="ticket-actions"><button class="tk-btn sync-btn" data-sync-id="${o.id}">📤 同步到POS Sync to POS</button></div>`;
+    }
   }
 
   el.innerHTML = `
@@ -914,6 +924,37 @@ function renderDetailView(o){
       const id = btn.dataset.printId;
       const order = latestOrdersList.find(x=>x.id===id);
       if(order) attemptNetworkPrint(order);
+    };
+  });
+  el.querySelectorAll('[data-sync-id]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.syncId;
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Syncing…';
+      try{
+        const res = await fetch('/api/orders/'+id, {
+          method:'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({posSyncRequested: true})
+        });
+        if(res.status === 401){
+          window.location.href = '/staff-login.html?redirect=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        if(!res.ok){
+          alert('Could not mark this order for POS sync. Please try again.');
+          btn.disabled = false;
+          btn.textContent = originalText;
+          return;
+        }
+        await renderKitchen();
+      }catch(e){
+        console.error(e);
+        alert('Network error. Please check your connection and try again.');
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     };
   });
   el.querySelectorAll('.tk-btn.confirm').forEach(btn=>{
