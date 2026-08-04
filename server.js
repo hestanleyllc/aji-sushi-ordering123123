@@ -291,10 +291,6 @@ async function printOrderTicket(order){
 // A small script (print-bridge.js) run on a computer connected to the printer polls
 // this queue and prints directly — no third-party subscription needed.
 const PRINT_BRIDGE_SECRET = process.env.PRINT_BRIDGE_SECRET || '';
-// Same shared-secret, machine-to-machine pattern as PRINT_BRIDGE_SECRET above —
-// this one gates the new /api/pos-sync/* routes that let a physical POS system
-// (running at the restaurant, not a browser) pull newly-confirmed orders.
-const POS_SYNC_SECRET = process.env.POS_SYNC_SECRET || '';
 let printQueue = []; // {id, station, title, content(base64 escpos), createdAt}
 
 function queueFreePrintJobs(order){
@@ -557,7 +553,12 @@ const DEFAULT_CONFIG = {
         fri: { open: '11:00', close: '20:45' },
         sat: { open: '11:00', close: '20:45' },
         sun: { open: '11:00', close: '20:45' },
-      }
+      },
+      // One-off exceptions to the recurring weekly schedule above, e.g. a holiday
+      // closure or a special one-day hours change. Each entry: { date: 'YYYY-MM-DD',
+      // closed: true } or { date: 'YYYY-MM-DD', open: '12:00', close: '17:00', note: '...' }.
+      // These take priority over the weekly schedule when the date matches today.
+      specialHours: []
     }
   },
   seo: {
@@ -925,7 +926,7 @@ function getStoreStatus(){
   let parts;
   try{
     parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false
+      timeZone: tz, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
     }).formatToParts(now);
   }catch(e){
     return { open: true, schedule: orderingHours.schedule, timezone: tz };
@@ -934,6 +935,22 @@ function getStoreStatus(){
   const hourStr = parts.find(p=>p.type==='hour').value;
   const minuteStr = parts.find(p=>p.type==='minute').value;
   const nowMinutes = (Number(hourStr) % 24) * 60 + Number(minuteStr);
+  const todayDate = `${parts.find(p=>p.type==='year').value}-${parts.find(p=>p.type==='month').value}-${parts.find(p=>p.type==='day').value}`;
+
+  // Special one-off dates (holidays, unscheduled closures, one-time hours changes)
+  // always take priority over the recurring weekly schedule.
+  const special = (orderingHours.specialHours || []).find(s => s.date === todayDate);
+  if(special){
+    if(special.closed){
+      return { open: false, reason: 'special_closed', note: special.note || '', schedule: orderingHours.schedule, timezone: tz };
+    }
+    if(special.open && special.close){
+      const [openH, openM] = special.open.split(':').map(Number);
+      const [closeH, closeM] = special.close.split(':').map(Number);
+      const isOpen = nowMinutes >= (openH*60+openM) && nowMinutes <= (closeH*60+closeM);
+      return { open: isOpen, reason: isOpen ? null : 'special_outside_hours', note: special.note || '', schedule: orderingHours.schedule, timezone: tz };
+    }
+  }
 
   const day = orderingHours.schedule[dayKey];
   if(!day || day.closed){
@@ -1157,47 +1174,6 @@ app.post('/api/print-queue/:id/ack', (req, res) => {
     return res.status(401).json({ error: 'invalid_secret' });
   }
   printQueue = printQueue.filter(j => j.id !== req.params.id);
-  res.json({ ok: true });
-});
-
-// ---- POS sync API ----
-// Lets the restaurant's own POS system (a separate app, not this website)
-// pull newly-CONFIRMED orders and import them automatically. Same
-// shared-secret pattern as the print-bridge above (machine-to-machine, not a
-// staff login) — and since the POS runs on its own device hitting this as a
-// different origin, these routes explicitly allow cross-origin requests
-// (nothing else on this server needs to, so it's scoped to just these two).
-function posSyncCors(req, res){
-  res.set({
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  });
-}
-app.options('/api/pos-sync/orders', (req, res) => { posSyncCors(req, res); res.sendStatus(204); });
-app.options('/api/pos-sync/orders/:id/ack', (req, res) => { posSyncCors(req, res); res.sendStatus(204); });
-
-app.get('/api/pos-sync/orders', (req, res) => {
-  posSyncCors(req, res);
-  if(!POS_SYNC_SECRET || req.query.secret !== POS_SYNC_SECRET){
-    return res.status(401).json({ error: 'invalid_secret' });
-  }
-  // Only orders staff has already confirmed (with a pickup time) on
-  // restaurant-orders.html, and that haven't been pulled into the POS yet —
-  // the existing accept/reject workflow there is unchanged.
-  const pending = data.orders.filter(o => o.status === 'confirmed' && !o.posSynced);
-  res.json(pending);
-});
-
-app.post('/api/pos-sync/orders/:id/ack', (req, res) => {
-  posSyncCors(req, res);
-  if(!POS_SYNC_SECRET || req.query.secret !== POS_SYNC_SECRET){
-    return res.status(401).json({ error: 'invalid_secret' });
-  }
-  const idx = data.orders.findIndex(o => o.id === req.params.id);
-  if(idx === -1) return res.status(404).json({ error: 'not_found' });
-  data.orders[idx].posSynced = true;
-  saveData();
   res.json({ ok: true });
 });
 

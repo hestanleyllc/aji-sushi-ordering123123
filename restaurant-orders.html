@@ -199,6 +199,14 @@
   }
   .compact-row:active{background:var(--page-bg);}
   .compact-row-name{font-size:15px;font-weight:700;color:var(--ink);}
+  .missed-badge{
+    display:inline-block;background:var(--red);color:#fff;font-size:10px;font-weight:800;
+    padding:2px 7px;border-radius:100px;letter-spacing:0.02em;vertical-align:middle;margin-left:4px;
+  }
+  .missed-banner{
+    background:var(--red);color:#fff;font-size:13px;font-weight:800;text-align:center;
+    padding:10px 12px;border-radius:10px;margin-bottom:14px;letter-spacing:0.02em;
+  }
   .compact-row-amount{font-size:15px;font-weight:700;color:var(--ink);}
   .compact-row-sub{font-size:11.5px;color:var(--stone);margin-top:2px;}
 
@@ -270,6 +278,11 @@ let firstLoad = true;
 let audioUnlocked = false;
 let pendingSelections = {}; // orderId -> {offsetMinutes, customTime}
 let currentView = 'list'; // 'list' | 'detail' | 'settings'
+
+const MISSED_ORDER_MINUTES = 5;
+function isOrderMissed(o){
+  return o.status === 'pending' && (Date.now() - o.createdAt) > MISSED_ORDER_MINUTES * 60000;
+}
 
 function applyDividerColor(){
   const saved = localStorage.getItem('dividerColor');
@@ -682,7 +695,10 @@ async function renderKitchen(isPoll){
 
   const currentIds = new Set(list.map(o=>o.id));
   if(!firstLoad){
-    const newOrders = list.filter(o=>!knownOrderIds.has(o.id));
+    // Don't ring for an order that's newly-discovered but already past the missed-order
+    // cutoff (e.g. the kitchen board was offline and only just reconnected) — it goes
+    // straight into the red "missed" state instead of triggering a fresh alarm.
+    const newOrders = list.filter(o=>!knownOrderIds.has(o.id) && !isOrderMissed(o));
     if(newOrders.length) playLoudAlarm();
   }
   // Print trigger is independent of firstLoad: if the page was just opened/refreshed
@@ -700,7 +716,7 @@ async function renderKitchen(isPoll){
   knownOrderIds = currentIds;
   firstLoad = false;
 
-  hasPendingOrders = list.some(o=>o.status==='pending');
+  hasPendingOrders = list.some(o=>o.status==='pending' && !isOrderMissed(o));
   if(!hasPendingOrders) stopAlarm();
 
   renderCurrentView(isPoll);
@@ -744,14 +760,17 @@ function renderListView(){
 
   function rowsHtml(arr, emptyMsg){
     if(!arr.length) return `<div class="col-empty">${emptyMsg}</div>`;
-    return arr.map(o=>`
+    return arr.map(o=>{
+      const missed = isOrderMissed(o);
+      return `
       <div class="compact-row" data-open-id="${o.id}">
         <div>
-          <div class="compact-row-name">${o.isNewCustomer?'⭐ ':''}${o.name?escapeHtml(o.name):(o.phone?escapeHtml(o.phone):'Guest')}</div>
+          <div class="compact-row-name">${o.isNewCustomer?'⭐ ':''}${o.name?escapeHtml(o.name):(o.phone?escapeHtml(o.phone):'Guest')}${missed?' <span class="missed-badge">MISSED ORDER</span>':''}</div>
           <div class="compact-row-sub">#${o.num} · ${timeAgo(o.createdAt)}</div>
         </div>
         <div class="compact-row-amount">$${Number(o.total).toFixed(2)}</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   el.innerHTML = `
@@ -829,18 +848,11 @@ function renderDetailView(o){
         <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>Accept</button>
       </div>`;
   } else {
-    // Manual POS-sync control — harmless to show even if the POS is set to
-    // auto-sync everything; it only matters when the POS's own "线上订单"
-    // setting is switched to manual mode, in which case THIS is what
-    // actually gets an order pulled in and printed.
-    if(o.posSynced){
-      bodyHtml = `<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">✅ 已同步到POS Synced to POS</button></div>`;
-    } else if(o.posSyncRequested){
-      bodyHtml = `<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">⏳ 等待POS同步 Waiting for POS…</button></div>`;
-    } else {
-      bodyHtml = `<div class="ticket-actions"><button class="tk-btn sync-btn" data-sync-id="${o.id}">📤 同步到POS Sync to POS</button></div>`;
-    }
+    bodyHtml = '';
   }
+
+  const missed = isOrderMissed(o);
+  const missedBanner = missed ? `<div class="missed-banner">⚠ MISSED ORDER — not confirmed within ${MISSED_ORDER_MINUTES} minutes</div>` : '';
 
   el.innerHTML = `
     <div class="detail-topbar">
@@ -849,6 +861,7 @@ function renderDetailView(o){
     </div>
     <div class="detail-body">
       <div class="ticket ${isPending?'urgent':''}">
+        ${missedBanner}
         <div class="ticket-top">
           <div class="ticket-num">#${o.num}</div>
           <div class="ticket-time">${formatClockTime(o.createdAt)} · ${timeAgo(o.createdAt)}</div>
@@ -924,37 +937,6 @@ function renderDetailView(o){
       const id = btn.dataset.printId;
       const order = latestOrdersList.find(x=>x.id===id);
       if(order) attemptNetworkPrint(order);
-    };
-  });
-  el.querySelectorAll('[data-sync-id]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const id = btn.dataset.syncId;
-      btn.disabled = true;
-      const originalText = btn.textContent;
-      btn.textContent = 'Syncing…';
-      try{
-        const res = await fetch('/api/orders/'+id, {
-          method:'PATCH',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({posSyncRequested: true})
-        });
-        if(res.status === 401){
-          window.location.href = '/staff-login.html?redirect=' + encodeURIComponent(window.location.pathname);
-          return;
-        }
-        if(!res.ok){
-          alert('Could not mark this order for POS sync. Please try again.');
-          btn.disabled = false;
-          btn.textContent = originalText;
-          return;
-        }
-        await renderKitchen();
-      }catch(e){
-        console.error(e);
-        alert('Network error. Please check your connection and try again.');
-        btn.disabled = false;
-        btn.textContent = originalText;
-      }
     };
   });
   el.querySelectorAll('.tk-btn.confirm').forEach(btn=>{

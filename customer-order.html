@@ -2844,15 +2844,19 @@ function updateTrackingUI(order){
   const statusEl = document.getElementById('trackStatus');
   const timeEl = document.getElementById('trackTime');
   const closeBtn = document.getElementById('closeConfirm');
+  const busyEl = document.getElementById('trackBusyNote');
   if(!statusEl || !timeEl) return;
   if(!order.pickupTime){
     statusEl.textContent = 'Waiting for the restaurant to confirm your pickup time…';
     timeEl.style.display = 'none';
+    const waitedMs = Date.now() - (order.createdAt || Date.now());
+    if(busyEl) busyEl.style.display = waitedMs > 3*60000 ? 'block' : 'none';
     return;
   }
   statusEl.textContent = 'Order confirmed';
   timeEl.style.display = 'block';
   timeEl.textContent = 'Pickup time: ' + order.pickupTime;
+  if(busyEl) busyEl.style.display = 'none';
   if(closeBtn){
     closeBtn.disabled = false;
     closeBtn.textContent = 'Done';
@@ -3113,6 +3117,9 @@ function renderDrawer(showConfirm){
         <div style="font-size:13px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Order sent to the restaurant</div>
         <div id="trackStatus" class="track-status">Waiting for the restaurant to confirm your pickup time…</div>
         <div id="trackTime" class="track-time" style="display:none;"></div>
+        <div id="trackBusyNote" style="display:none;background:#FFF4E5;border:1px solid #F5C572;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:13px;color:#8A5A00;line-height:1.5;">
+          The restaurant looks busy right now. If you'd like your order sooner, try calling us directly at <a href="tel:8452786333" style="color:#8A5A00;font-weight:700;">(845) 278-6333</a>.
+        </div>
         <div style="font-size:12px;color:var(--stone);margin-top:10px;">Please pay in store when you arrive or when your order is ready.</div>
         <button class="submit-btn" style="margin-top:18px;background:var(--ink);" id="closeConfirm" disabled>Waiting for confirmation…</button>
       </div>`;
@@ -3421,7 +3428,11 @@ document.getElementById('itemModalBackdrop').onclick = closeItemModal;
 
 document.getElementById('cartFab').onclick = openDrawer;
 document.getElementById('cartBtnTop').onclick = openDrawer;
-document.getElementById('drawerBackdrop').onclick = closeDrawer;
+document.getElementById('drawerBackdrop').onclick = ()=>{
+  const closeBtn = document.getElementById('closeConfirm');
+  if(closeBtn && closeBtn.disabled) return; // can't dismiss while waiting for the restaurant to confirm pickup time
+  closeDrawer();
+};
 
 document.getElementById('navMenuBtn').onclick = (e)=>{
   e.stopPropagation();
@@ -3466,6 +3477,8 @@ function renderCategoryNav(){
 }
 
 function goHome(){
+  const closeBtn = document.getElementById('closeConfirm');
+  if(closeBtn && closeBtn.disabled) return; // can't navigate away while waiting for pickup-time confirmation
   document.getElementById('navDropdown').classList.remove('open');
   document.getElementById('siteDropdown').classList.remove('open');
   closeContact();

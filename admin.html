@@ -172,6 +172,9 @@
   <h2>Ordering Hours</h2>
   <div class="card" id="hoursCard"></div>
 
+  <h2>Special Hours / Holiday Closures</h2>
+  <div class="card" id="specialHoursCard"></div>
+
   <h2>Printer Stations</h2>
   <div class="card" id="stationsCard"></div>
 
@@ -213,7 +216,8 @@ const DEFAULT_SITE = {
       fri: { open: '11:00', close: '20:45' },
       sat: { open: '11:00', close: '20:45' },
       sun: { open: '11:00', close: '20:45' },
-    }
+    },
+    specialHours: []
   }
 };
 const DAY_LABELS = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
@@ -2631,7 +2635,8 @@ async function loadConfig(){
         if(cfg.siteInfo.orderingHours){
           state.siteInfo.orderingHours = {
             timezone: cfg.siteInfo.orderingHours.timezone || 'America/New_York',
-            schedule: { ...DEFAULT_SITE.orderingHours.schedule, ...(cfg.siteInfo.orderingHours.schedule||{}) }
+            schedule: { ...DEFAULT_SITE.orderingHours.schedule, ...(cfg.siteInfo.orderingHours.schedule||{}) },
+            specialHours: cfg.siteInfo.orderingHours.specialHours || []
           };
         }
       }
@@ -2744,6 +2749,56 @@ function renderHours(){
   el.querySelectorAll('.hours-close').forEach(inp=>{
     inp.onchange = ()=>{ schedule[inp.dataset.day].close = inp.value; };
   });
+
+  renderSpecialHours();
+}
+
+function renderSpecialHours(){
+  const el = document.getElementById('specialHoursCard');
+  if(!el) return;
+  if(!state.siteInfo.orderingHours.specialHours) state.siteInfo.orderingHours.specialHours = [];
+  const list = state.siteInfo.orderingHours.specialHours;
+  el.innerHTML = `
+    <div style="font-size:11px;color:#7a6c46;margin-bottom:10px;">
+      For holidays or one-off schedule changes (like an unplanned closure). These override the weekly schedule above for that specific date only.
+    </div>
+    ${list.map((s, i)=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed #cbbd94;flex-wrap:wrap;">
+        <input type="date" class="special-date" data-i="${i}" value="${s.date||''}" style="padding:6px;border-radius:6px;border:1px solid #cbbd94;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#6b5d38;">
+          <input type="checkbox" class="special-closed" data-i="${i}" ${s.closed?'checked':''}> Closed all day
+        </label>
+        <input type="time" class="special-open" data-i="${i}" value="${s.open||'11:00'}" ${s.closed?'disabled':''} style="padding:6px;border-radius:6px;border:1px solid #cbbd94;">
+        <span style="font-size:12px;color:#7a6c46;">to</span>
+        <input type="time" class="special-close" data-i="${i}" value="${s.close||'20:45'}" ${s.closed?'disabled':''} style="padding:6px;border-radius:6px;border:1px solid #cbbd94;">
+        <input type="text" class="special-note" data-i="${i}" value="${escapeHtml(s.note||'')}" placeholder="Note (e.g. Christmas)" style="flex:1;min-width:120px;padding:6px;border-radius:6px;border:1px solid #cbbd94;">
+        <button class="icon-btn del" data-act="delSpecial" data-i="${i}">✕</button>
+      </div>`).join('') || '<div style="font-size:12px;color:#7a6c46;">No exceptions set.</div>'}
+    <button class="add-dish-btn" id="addSpecialHoursBtn" style="margin-top:10px;">+ Add Date Exception</button>
+  `;
+  el.querySelectorAll('.special-date').forEach(inp=>{
+    inp.onchange = ()=>{ list[inp.dataset.i].date = inp.value; };
+  });
+  el.querySelectorAll('.special-closed').forEach(cb=>{
+    cb.onchange = ()=>{ list[cb.dataset.i].closed = cb.checked; renderSpecialHours(); };
+  });
+  el.querySelectorAll('.special-open').forEach(inp=>{
+    inp.onchange = ()=>{ list[inp.dataset.i].open = inp.value; };
+  });
+  el.querySelectorAll('.special-close').forEach(inp=>{
+    inp.onchange = ()=>{ list[inp.dataset.i].close = inp.value; };
+  });
+  el.querySelectorAll('.special-note').forEach(inp=>{
+    inp.oninput = ()=>{ list[inp.dataset.i].note = inp.value; };
+  });
+  el.querySelectorAll('[data-act="delSpecial"]').forEach(btn=>{
+    btn.onclick = ()=>{ list.splice(Number(btn.dataset.i), 1); renderSpecialHours(); };
+  });
+  const addBtn = document.getElementById('addSpecialHoursBtn');
+  if(addBtn) addBtn.onclick = ()=>{
+    list.push({ date: '', closed: true, note: '' });
+    renderSpecialHours();
+  };
 }
 
 function renderStations(){
