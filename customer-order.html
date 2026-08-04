@@ -2835,10 +2835,32 @@ async function checkOrderStatus(){
   if(!trackingOrderId) return;
   try{
     const res = await fetch('/api/orders/'+trackingOrderId);
+    if(res.status === 404){
+      showOrderRejectedUI();
+      stopTracking();
+      return;
+    }
     if(!res.ok) return;
     const order = await res.json();
     updateTrackingUI(order);
   }catch(e){}
+}
+function showOrderRejectedUI(){
+  const statusEl = document.getElementById('trackStatus');
+  const timeEl = document.getElementById('trackTime');
+  const busyEl = document.getElementById('trackBusyNote');
+  const closeBtn = document.getElementById('closeConfirm');
+  if(!statusEl) return;
+  statusEl.textContent = "We're sorry, we're unable to take this order right now.";
+  if(timeEl) timeEl.style.display = 'none';
+  if(busyEl){
+    busyEl.style.display = 'block';
+    busyEl.innerHTML = `Please call us directly to order at <a href="tel:8452786333" style="color:#8A5A00;font-weight:700;">(845) 278-6333</a>.`;
+  }
+  if(closeBtn){
+    closeBtn.disabled = false;
+    closeBtn.textContent = 'Close';
+  }
 }
 function updateTrackingUI(order){
   const statusEl = document.getElementById('trackStatus');
