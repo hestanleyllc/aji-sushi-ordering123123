@@ -541,6 +541,7 @@ const DEFAULT_CONFIG = {
     localPrinterIp: '',
     orderAlertEnabled: false,
     orderAlertPhone: '',
+    googleReviewLink: '',
     orderAlertMinutes: 5,
     printEnabled: true,
     orderingHours: {
@@ -991,6 +992,54 @@ app.get('/api/store-status', (req, res) => {
   res.json(getStoreStatus());
 });
 
+function findDishById(dishId){
+  for(const section of (data.config.menu || [])){
+    const found = (section.items || []).find(d => d.id === dishId);
+    if(found) return found;
+  }
+  return null;
+}
+
+// Recomputes every item's price, subtotal, tax and total directly from the
+// menu data stored on the server — the client's submitted prices are never
+// trusted. This is what stops someone from tampering with the order request
+// to pay less than the real price.
+function computeAuthoritativePricing(items){
+  const taxRate = (data.config.siteInfo && Number(data.config.siteInfo.taxRate)) || 0;
+  let subtotal = 0;
+  const validatedItems = [];
+  for(const it of items){
+    const dish = it.dishId ? findDishById(it.dishId) : null;
+    if(!dish){
+      return { error: `We couldn't find "${it.name || 'an item'}" on the current menu. Please refresh the page and try again.` };
+    }
+    if(dish.soldOut){
+      return { error: `Sorry, "${dish.name}" just sold out. Please remove it and try again.` };
+    }
+    let unitPrice = Number(dish.price) || 0;
+    if(it.options && Array.isArray(dish.optionGroups)){
+      for(const group of dish.optionGroups){
+        const selected = it.options[group.label];
+        if(selected == null) continue;
+        const selArr = Array.isArray(selected) ? selected : [selected];
+        for(const choiceName of selArr){
+          const choice = (group.choices || []).find(c => (typeof c === 'string' ? c : c.name) === choiceName);
+          if(choice && typeof choice !== 'string'){
+            unitPrice += Number(choice.price) || 0;
+          }
+        }
+      }
+    }
+    const qty = Math.max(1, parseInt(it.qty, 10) || 1);
+    subtotal += unitPrice * qty;
+    validatedItems.push({ ...it, price: Math.round(unitPrice * 100) / 100, name: dish.name });
+  }
+  subtotal = Math.round(subtotal * 100) / 100;
+  const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+  const total = Math.round((subtotal + tax) * 100) / 100;
+  return { items: validatedItems, subtotal, tax, total };
+}
+
 function validateOrderPayload(body){
   if(!Array.isArray(body.items) || body.items.length === 0){
     return { error: 'Order must include at least one item' };
@@ -1021,6 +1070,10 @@ function normalizeCustomerKey(phone, email){
 }
 
 function createOrder(body, extra){
+  const pricing = computeAuthoritativePricing(body.items);
+  if(pricing.error){
+    return { error: pricing.error };
+  }
   const customerKey = normalizeCustomerKey(body.phone, body.email);
   let isNewCustomer = false;
   if(customerKey){
@@ -1032,10 +1085,10 @@ function createOrder(body, extra){
   const order = {
     id: 'o_' + Date.now() + '_' + Math.floor(Math.random() * 100000),
     num: nextOrderNumber(),
-    items: body.items,
-    subtotal: body.subtotal || 0,
-    tax: body.tax || 0,
-    total: body.total || 0,
+    items: pricing.items,
+    subtotal: pricing.subtotal,
+    tax: pricing.tax,
+    total: pricing.total,
     note: body.note || '',
     name: body.name || '',
     phone: body.phone || '',
@@ -1066,6 +1119,9 @@ app.post('/api/orders', (req, res) => {
     return res.status(err.code === 'closed' || err.code === 'category_closed' ? 403 : 400).json({ error: err.code || 'invalid', message: err.error });
   }
   const order = createOrder(body, { paid: false, paymentMethod: 'in_store' });
+  if(order.error){
+    return res.status(400).json({ error: 'invalid_items', message: order.error });
+  }
   res.json(order);
 });
 
@@ -1131,6 +1187,14 @@ app.get('/api/checkout/verify', async (req, res) => {
     }
     pendingCheckouts.delete(checkout_id);
     const order = createOrder(pending, { paid: true, paymentMethod: 'online' });
+    if(order.error){
+      // Payment already succeeded but the order itself failed validation (e.g. an
+      // item sold out in the few minutes between checkout and payment completing).
+      // This needs a human to sort out the refund — log it clearly and tell the
+      // customer to contact the restaurant rather than silently losing their money.
+      console.error('PAID ORDER FAILED TO CREATE — needs manual refund:', checkout_id, session_id, order.error);
+      return res.status(409).json({ error: 'order_failed_after_payment', message: `Your payment went through, but we hit an issue creating your order (${order.error}). Please call the restaurant — we'll sort this out right away.` });
+    }
     res.json({ ok: true, order });
   }catch(e){
     console.error('Stripe verify failed', e);

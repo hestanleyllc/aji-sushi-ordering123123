@@ -284,6 +284,12 @@
     padding:13px 16px;font-size:13px;font-weight:500;line-height:1.5;
   }
   .closed-banner.show{display:block;}
+  .wait-time-banner{
+    background:var(--paper-deep);color:var(--ink);text-align:center;
+    padding:9px 16px;font-size:12.5px;font-weight:700;letter-spacing:0.01em;
+    border-bottom:1px solid var(--line);
+  }
+  .wait-time-banner.hide{display:none;}
 </style>
 </head>
 <body>
@@ -318,6 +324,8 @@
     <button class="cart-btn" id="cartBtnTop">🛒 <span class="cart-btn-count" id="cartBtnCount">0</span></button>
   </div>
 </div>
+
+<div class="wait-time-banner" id="waitTimeBanner">⏱ Estimated pickup time: 15–20 minutes</div>
 
 <div class="contact-modal-backdrop" id="contactBackdrop"></div>
 <div class="contact-modal" id="contactModal">
@@ -2788,12 +2796,15 @@ async function loadStoreStatus(){
 
 function updateClosedBanner(){
   const banner = document.getElementById('closedBanner');
+  const waitBanner = document.getElementById('waitTimeBanner');
   if(!banner) return;
   if(storeOpen){
     banner.classList.remove('show');
+    if(waitBanner) waitBanner.classList.remove('hide');
   } else {
     banner.innerHTML = `🕒 We're currently closed for online ordering.<br>Hours: ${escapeHtml(formatHoursLine(storeStatus && storeStatus.schedule))}`;
     banner.classList.add('show');
+    if(waitBanner) waitBanner.classList.add('hide');
   }
   renderCustomer();
 }
@@ -2882,6 +2893,15 @@ function updateTrackingUI(order){
   if(closeBtn){
     closeBtn.disabled = false;
     closeBtn.textContent = 'Done';
+  }
+  const reviewEl = document.getElementById('trackReviewNote');
+  if(reviewEl){
+    if(SITE.googleReviewLink){
+      reviewEl.style.display = 'block';
+      reviewEl.innerHTML = `Enjoyed ordering with us? <a href="${escapeHtml(SITE.googleReviewLink)}" target="_blank" rel="noopener" style="color:var(--orange);font-weight:700;">Leave us a review on Google ★</a>`;
+    } else {
+      reviewEl.style.display = 'none';
+    }
   }
 }
 
@@ -3143,6 +3163,7 @@ function renderDrawer(showConfirm){
           The restaurant looks busy right now. If you'd like your order sooner, try calling us directly at <a href="tel:8452786333" style="color:#8A5A00;font-weight:700;">(845) 278-6333</a>.
         </div>
         <div style="font-size:12px;color:var(--stone);margin-top:10px;">Please pay in store when you arrive or when your order is ready.</div>
+        <div id="trackReviewNote" style="display:none;font-size:13px;text-align:center;margin-top:14px;"></div>
         <button class="submit-btn" style="margin-top:18px;background:var(--ink);" id="closeConfirm" disabled>Waiting for confirmation…</button>
       </div>`;
     document.getElementById('closeConfirm').onclick = ()=>{
