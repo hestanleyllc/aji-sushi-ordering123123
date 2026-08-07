@@ -350,6 +350,51 @@ async function enablePushNotifications(){
 }
 registerServiceWorkerOnce();
 
+// ---- Add to Home Screen (works across browsers, not just ones that auto-prompt) ----
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+window.addEventListener('appinstalled', ()=>{
+  deferredInstallPrompt = null;
+});
+
+function getInstallInstructions(){
+  const ua = navigator.userAgent || '';
+  const isIOS = /iphone|ipad|ipod/i.test(ua);
+  const isSafari = isIOS && /safari/i.test(ua) && !/crios|fxios/i.test(ua);
+  const isAndroid = /android/i.test(ua);
+  if(isStandalone()){
+    return { installable:false, message: 'This is already added to your Home Screen.' };
+  }
+  if(isIOS && isSafari){
+    return { installable:false, message: 'On Safari: tap the Share icon (square with an arrow), then "Add to Home Screen".' };
+  }
+  if(isIOS){
+    return { installable:false, message: 'This browser can\'t install apps on iOS. Open this page in Safari, then use its Share button → "Add to Home Screen".' };
+  }
+  if(deferredInstallPrompt){
+    return { installable:true, message: '' };
+  }
+  if(isAndroid){
+    return { installable:false, message: 'Open the browser menu (⋮ in the top right) and look for "Add to Home screen" or "Install app".' };
+  }
+  return { installable:false, message: 'Open your browser\'s menu and look for "Add to Home screen" or "Install app".' };
+}
+
+async function handleInstallClick(){
+  const info = getInstallInstructions();
+  if(info.installable && deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    renderSettingsView();
+  } else {
+    alert(info.message);
+  }
+}
+
 let currentDetailOrderId = null;
 let latestOrdersList = [];
 let printEnabled = true;
@@ -1013,6 +1058,19 @@ async function renderSettingsView(){
       </div>
 
       <div class="settings-section">
+        <div class="settings-section-title">App Install</div>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Add to Home Screen</div>
+              <div class="settings-row-sub">${isStandalone() ? '✓ Already added on this device' : 'Works on any browser — shows the right steps automatically'}</div>
+            </div>
+            ${!isStandalone() ? `<button class="tk-btn confirm" id="installAppBtn" style="flex:none;padding:9px 14px;font-size:12.5px;">Add</button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="settings-section-title">Notifications</div>
         <div class="settings-card">
           <div class="settings-row">
@@ -1093,6 +1151,11 @@ async function renderSettingsView(){
       </div>
     </div>
   `;
+
+  const installBtn = document.getElementById('installAppBtn');
+  if(installBtn){
+    installBtn.onclick = handleInstallClick;
+  }
 
   const enablePushBtn = document.getElementById('enablePushBtn');
   if(enablePushBtn){
