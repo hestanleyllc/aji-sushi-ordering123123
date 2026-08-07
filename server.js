@@ -69,6 +69,21 @@ function callAboutUnconfirmedOrder(order){
   }).catch(err => console.error('Failed to place order reminder call', err));
 }
 
+// Texts the customer once their pickup time is confirmed. Separate from the
+// staff phone-call reminders above — this uses the same Twilio account/number,
+// just sent to the customer instead of the restaurant.
+function smsCustomerOrderConfirmed(order){
+  if(!twilioClient || !order.phone) return;
+  const cfg = data.config.siteInfo || {};
+  const restaurantName = cfg.name || 'the restaurant';
+  const body = `${restaurantName}: Your order #${order.num} is confirmed! Pickup time: ${order.pickupTime}. Thanks for ordering with us.`;
+  twilioClient.messages.create({
+    to: order.phone,
+    from: TWILIO_FROM_NUMBER,
+    body,
+  }).catch(err => console.error('Failed to text customer order confirmation', err));
+}
+
 function checkUnconfirmedOrdersForCalls(){
   const cfg = data.config.siteInfo || {};
   if(!cfg.orderAlertEnabled || !twilioClient || !cfg.orderAlertPhone) return;
@@ -1211,6 +1226,7 @@ app.patch('/api/orders/:id', requireKitchenAuth, (req, res) => {
   broadcast('order-updated', { order: data.orders[idx] });
   if(!wasConfirmed && data.orders[idx].status === 'confirmed'){
     sendCustomerConfirmationEmail(data.orders[idx]);
+    smsCustomerOrderConfirmed(data.orders[idx]);
   }
   res.json(data.orders[idx]);
 });

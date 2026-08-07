@@ -290,6 +290,14 @@
     border-bottom:1px solid var(--line);
   }
   .wait-time-banner.hide{display:none;}
+  .reorder-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--pink);color:#fff;padding:11px 16px;font-size:13px;font-weight:700;
+  }
+  .reorder-banner button{
+    background:#fff;color:var(--pink);border:none;border-radius:100px;padding:7px 14px;
+    font-size:12px;font-weight:800;cursor:pointer;flex:none;
+  }
 </style>
 </head>
 <body>
@@ -326,6 +334,7 @@
 </div>
 
 <div class="wait-time-banner" id="waitTimeBanner">⏱ Estimated pickup time: 15–20 minutes</div>
+<div class="reorder-banner" id="reorderBanner" style="display:none;"></div>
 
 <div class="contact-modal-backdrop" id="contactBackdrop"></div>
 <div class="contact-modal" id="contactModal">
@@ -2792,6 +2801,20 @@ async function loadStoreStatus(){
     }
   }catch(e){}
   updateClosedBanner();
+  renderReorderBanner();
+}
+
+function renderReorderBanner(){
+  const el = document.getElementById('reorderBanner');
+  if(!el) return;
+  const items = getLastOrderForReorder();
+  if(!items || !storeOpen){
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'flex';
+  el.innerHTML = `<span>👋 Welcome back! Want your usual order again?</span><button id="reorderBtn">Reorder</button>`;
+  document.getElementById('reorderBtn').onclick = reorderLastOrder;
 }
 
 function updateClosedBanner(){
@@ -3349,6 +3372,69 @@ function openDrawer(){
   document.getElementById('drawer').classList.add('open');
   renderDrawer(false);
 }
+function saveLastOrderForReorder(){
+  if(!cartItems.length) return;
+  try{
+    const simplified = cartItems.map(ci=>({
+      dishId: ci.dishId, name: ci.name, qty: ci.qty, note: ci.note, options: ci.options
+    }));
+    localStorage.setItem('lastOrderItems', JSON.stringify(simplified));
+    localStorage.setItem('lastOrderSavedAt', String(Date.now()));
+  }catch(e){}
+}
+
+function getLastOrderForReorder(){
+  try{
+    const raw = localStorage.getItem('lastOrderItems');
+    if(!raw) return null;
+    const items = JSON.parse(raw);
+    if(!Array.isArray(items) || !items.length) return null;
+    return items;
+  }catch(e){ return null; }
+}
+
+function findDishByIdClient(dishId){
+  for(const section of (MENU||[])){
+    const found = (section.items||[]).find(d=>d.id===dishId);
+    if(found) return { dish: found, category: section.cat };
+  }
+  return null;
+}
+
+function reorderLastOrder(){
+  const items = getLastOrderForReorder();
+  if(!items) return;
+  let addedCount = 0, skippedCount = 0;
+  items.forEach(it=>{
+    const found = findDishByIdClient(it.dishId);
+    if(!found || found.dish.soldOut){ skippedCount++; return; }
+    const dish = found.dish;
+    let unitPrice = dish.price;
+    if(it.options && Array.isArray(dish.optionGroups)){
+      dish.optionGroups.forEach(g=>{
+        const selected = it.options[g.label];
+        if(selected == null) return;
+        const selArr = Array.isArray(selected) ? selected : [selected];
+        selArr.forEach(name=>{
+          const choice = findChoice(g, name);
+          if(choice) unitPrice += choicePrice(choice);
+        });
+      });
+    }
+    cartItems.push({
+      lineId: 'ci_'+Date.now()+'_'+Math.floor(Math.random()*10000),
+      dishId: dish.id, name: dish.name, price: unitPrice, category: found.category,
+      qty: it.qty || 1, note: it.note || '', options: it.options || {}, printRouting: dish.printRouting || []
+    });
+    addedCount++;
+  });
+  renderCustomer();
+  if(addedCount) openDrawer();
+  if(skippedCount){
+    alert(`${addedCount} item(s) added to your cart. ${skippedCount} item(s) from your last order are no longer available and were skipped.`);
+  }
+}
+
 function closeDrawer(){
   stopTracking();
   document.getElementById('drawerBackdrop').classList.remove('open');
@@ -3409,6 +3495,7 @@ async function submitOrder(){
     }
     if(!res.ok) throw new Error('order failed');
     const order = await res.json();
+    saveLastOrderForReorder();
     renderDrawer(true);
     startTracking(order.id);
   }catch(e){
@@ -3553,6 +3640,7 @@ async function handleReturnFromPayment(){
       const res = await fetch(`/api/checkout/verify?checkout_id=${encodeURIComponent(checkoutId)}&session_id=${encodeURIComponent(sessionId)}`);
       const data = await res.json().catch(()=>({}));
       if(res.ok && data.ok && data.order){
+        saveLastOrderForReorder();
         localStorage.removeItem('pendingCartRestore');
         cartItems = [];
         renderCustomer();
