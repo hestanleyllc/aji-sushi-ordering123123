@@ -1041,7 +1041,14 @@ function findDishByName(name){
 // so it's still safe, and it means a minor sync hiccup doesn't block ordering.
 function computeAuthoritativePricing(items){
   try{
-    const taxRate = (data.config.siteInfo && Number(data.config.siteInfo.taxRate)) || 0;
+    let taxRate = data.config.siteInfo ? Number(data.config.siteInfo.taxRate) : NaN;
+    if(!Number.isFinite(taxRate)){
+      // This should never happen in normal operation — taxRate is always saved
+      // as part of siteInfo. If it's ever missing or malformed, fail toward the
+      // restaurant's real configured rate rather than silently charging 0% tax.
+      console.error('taxRate missing or invalid on siteInfo — falling back to 8.375%. Raw value was:', data.config.siteInfo && data.config.siteInfo.taxRate);
+      taxRate = 8.375;
+    }
     let subtotal = 0;
     const validatedItems = [];
     for(const it of items){
