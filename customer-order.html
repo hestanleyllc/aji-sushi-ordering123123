@@ -327,6 +327,7 @@
         <div class="nav-item" id="navContactBtn">Contact</div>
         <a class="nav-item" href="/admin.html" target="_blank" style="display:block;text-decoration:none;">Admin</a>
         <a class="nav-item" href="/restaurant-orders.html" target="_blank" style="display:block;text-decoration:none;">Orders</a>
+        <div class="nav-item" id="langToggleBtn" style="border-top:1px solid var(--line);margin-top:4px;padding-top:12px;">🌐 中文 / English</div>
       </div>
     </div>
     <button class="cart-btn" id="cartBtnTop">🛒 <span class="cart-btn-count" id="cartBtnCount">0</span></button>
@@ -2734,6 +2735,58 @@ const DEFAULT_MENU = [
 ];
 
 let MENU = DEFAULT_MENU;
+
+// ---- Simple UI language toggle (English / Chinese) ----
+// This only translates the app's own interface text (buttons, labels, messages).
+// Dish names and descriptions stay exactly as entered in the admin menu editor —
+// translating menu content itself would need a separate field per dish, which
+// isn't set up. Persisted per-device so it's remembered next visit.
+const I18N = {
+  en: {
+    menu: 'Menu', home: 'Home', contact: 'Contact Us', admin: 'Admin', orders: 'Orders',
+    cart: 'Your Order', subtotal: 'Subtotal', tax: 'Tax', total: 'Total',
+    checkout: 'Checkout', remove: 'Remove', empty_cart: 'Your cart is empty',
+    add_to_cart: 'Add to Cart', note_label: 'Note for this item (optional)',
+    note_placeholder: 'e.g. no wasabi, extra spicy…',
+    pickup: 'Pickup', delivery: 'Delivery', name_label: 'Name', phone_label: 'Phone Number',
+    email_label: 'Email (for your pickup confirmation)', order_note_label: 'Order note (optional)',
+    place_order: 'Place Order', sending: 'Sending…',
+    waiting_confirm: 'Waiting for the restaurant to confirm your pickup time…',
+    order_confirmed: 'Order confirmed', pickup_time_label: 'Pickup time: ',
+    pay_in_store: 'Please pay in store when you arrive or when your order is ready.',
+    done: 'Done', wait_time: '⏱ Estimated pickup time: 15–20 minutes',
+    reorder_greeting: '👋 Welcome back! Want your usual order again?', reorder_btn: 'Reorder',
+    leave_review: 'Enjoyed ordering with us?', review_link_text: 'Leave us a review on Google ★',
+  },
+  zh: {
+    menu: '菜单', home: '首页', contact: '联系我们', admin: '后台管理', orders: '接单页面',
+    cart: '我的订单', subtotal: '小计', tax: '税', total: '总计',
+    checkout: '去结算', remove: '删除', empty_cart: '购物车是空的',
+    add_to_cart: '加入购物车', note_label: '给这道菜留言（可选）',
+    note_placeholder: '例如：不要芥末、多加辣',
+    pickup: '自取', delivery: '外送', name_label: '姓名', phone_label: '电话号码',
+    email_label: '邮箱（用于接收取餐确认）', order_note_label: '订单备注（可选）',
+    place_order: '下单', sending: '发送中…',
+    waiting_confirm: '正在等待餐厅确认取餐时间…',
+    order_confirmed: '订单已确认', pickup_time_label: '取餐时间：',
+    pay_in_store: '请在到店取餐或者取餐时付款。',
+    done: '完成', wait_time: '⏱ 预计等待时间：15–20分钟',
+    reorder_greeting: '👋 欢迎回来！要不要再来一份一样的？', reorder_btn: '再来一单',
+    leave_review: '这次点餐还满意吗？', review_link_text: '来Google给我们留个评价 ★',
+  }
+};
+let currentLang = localStorage.getItem('siteLang') || 'en';
+function t(key){
+  return (I18N[currentLang] && I18N[currentLang][key]) || I18N.en[key] || key;
+}
+function setLang(lang){
+  currentLang = lang;
+  localStorage.setItem('siteLang', lang);
+  applyStaticTranslations();
+  renderCustomer();
+  renderReorderBanner();
+}
+
 let SITE = DEFAULT_SITE;
 
 const KANJI_NUMERALS = [];
@@ -2813,7 +2866,7 @@ function renderReorderBanner(){
     return;
   }
   el.style.display = 'flex';
-  el.innerHTML = `<span>👋 Welcome back! Want your usual order again?</span><button id="reorderBtn">Reorder</button>`;
+  el.innerHTML = `<span>${t('reorder_greeting')}</span><button id="reorderBtn">${t('reorder_btn')}</button>`;
   document.getElementById('reorderBtn').onclick = reorderLastOrder;
 }
 
@@ -2903,25 +2956,25 @@ function updateTrackingUI(order){
   const busyEl = document.getElementById('trackBusyNote');
   if(!statusEl || !timeEl) return;
   if(!order.pickupTime){
-    statusEl.textContent = 'Waiting for the restaurant to confirm your pickup time…';
+    statusEl.textContent = t('waiting_confirm');
     timeEl.style.display = 'none';
     const waitedMs = Date.now() - (order.createdAt || Date.now());
     if(busyEl) busyEl.style.display = waitedMs > 3*60000 ? 'block' : 'none';
     return;
   }
-  statusEl.textContent = 'Order confirmed';
+  statusEl.textContent = t('order_confirmed');
   timeEl.style.display = 'block';
-  timeEl.textContent = 'Pickup time: ' + order.pickupTime;
+  timeEl.textContent = t('pickup_time_label') + order.pickupTime;
   if(busyEl) busyEl.style.display = 'none';
   if(closeBtn){
     closeBtn.disabled = false;
-    closeBtn.textContent = 'Done';
+    closeBtn.textContent = t('done');
   }
   const reviewEl = document.getElementById('trackReviewNote');
   if(reviewEl){
     if(SITE.googleReviewLink){
       reviewEl.style.display = 'block';
-      reviewEl.innerHTML = `Enjoyed ordering with us? <a href="${escapeHtml(SITE.googleReviewLink)}" target="_blank" rel="noopener" style="color:var(--orange);font-weight:700;">Leave us a review on Google ★</a>`;
+      reviewEl.innerHTML = `${t('leave_review')} <a href="${escapeHtml(SITE.googleReviewLink)}" target="_blank" rel="noopener" style="color:var(--orange);font-weight:700;">${t('review_link_text')}</a>`;
     } else {
       reviewEl.style.display = 'none';
     }
@@ -3097,15 +3150,15 @@ function renderItemModal(){
     <div class="item-price mono">$${unitPrice.toFixed(2)}</div>
     ${groupsHtml}
     <div class="field">
-      <label>Note for this item (optional)</label>
-      <textarea id="modalNoteInput" rows="2" placeholder="e.g. no wasabi, extra spicy…">${escapeHtml(modalNote)}</textarea>
+      <label>${t('note_label')}</label>
+      <textarea id="modalNoteInput" rows="2" placeholder="${t('note_placeholder')}">${escapeHtml(modalNote)}</textarea>
     </div>
     <div class="qty-stepper-row">
       <div class="qty-btn" id="modalDec">−</div>
       <div class="qty-display" id="modalQtyDisplay">${modalQty}</div>
       <div class="qty-btn add" id="modalInc">+</div>
     </div>
-    <button class="submit-btn" id="addItemBtn" ${canAdd?'':'disabled'}>Add to Cart — $${(unitPrice*modalQty).toFixed(2)}</button>
+    <button class="submit-btn" id="addItemBtn" ${canAdd?'':'disabled'}>${t('add_to_cart')} — $${(unitPrice*modalQty).toFixed(2)}</button>
   `;
   document.getElementById('modalNoteInput').oninput = (e)=>{ modalNote = e.target.value; };
   document.getElementById('modalDec').onclick = ()=>{ if(modalQty>1){ modalQty--; renderItemModal(); } };
@@ -3180,14 +3233,14 @@ function renderDrawer(showConfirm){
       <div class="checker"></div>
       <div class="confirm">
         <div style="font-size:13px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Order sent to the restaurant</div>
-        <div id="trackStatus" class="track-status">Waiting for the restaurant to confirm your pickup time…</div>
+        <div id="trackStatus" class="track-status">${t('waiting_confirm')}</div>
         <div id="trackTime" class="track-time" style="display:none;"></div>
         <div id="trackBusyNote" style="display:none;background:#FFF4E5;border:1px solid #F5C572;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:13px;color:#8A5A00;line-height:1.5;">
           The restaurant looks busy right now. If you'd like your order sooner, try calling us directly at <a href="tel:8452786333" style="color:#8A5A00;font-weight:700;">(845) 278-6333</a>.
         </div>
-        <div style="font-size:12px;color:var(--stone);margin-top:10px;">Please pay in store when you arrive or when your order is ready.</div>
+        <div style="font-size:12px;color:var(--stone);margin-top:10px;">${t('pay_in_store')}</div>
         <div id="trackReviewNote" style="display:none;font-size:13px;text-align:center;margin-top:14px;"></div>
-        <button class="submit-btn" style="margin-top:18px;background:var(--ink);" id="closeConfirm" disabled>Waiting for confirmation…</button>
+        <button class="submit-btn" style="margin-top:18px;background:var(--ink);" id="closeConfirm" disabled>${t('waiting_confirm')}</button>
       </div>`;
     document.getElementById('closeConfirm').onclick = ()=>{
       if(document.getElementById('closeConfirm').disabled) return;
@@ -3200,9 +3253,9 @@ function renderDrawer(showConfirm){
     return;
   }
   const {count,subtotal,tax,total} = cartCountTotal();
-  let html = '<div class="checker"></div><h2>Your Order</h2>';
+  let html = `<div class="checker"></div><h2>${t('cart')}</h2>`;
   if(count===0){
-    html += '<div class="empty-cart">Your cart is empty — pick something off the menu</div>';
+    html += `<div class="empty-cart">${t('empty_cart')}</div>`;
   } else {
     cartItems.forEach(ci=>{
       const optLines = Object.entries(ci.options||{}).map(([label,val])=>{
@@ -3237,15 +3290,15 @@ function renderDrawer(showConfirm){
         </div>
       </div>` : ''}
       <div class="field">
-        <label>Your name</label>
+        <label>${t('name_label')}</label>
         <input id="customerName" placeholder="For pickup call-out" />
       </div>
       <div class="field">
-        <label>Phone Number *</label>
+        <label>${t('phone_label')} *</label>
         <input id="customerPhone" type="tel" required placeholder="e.g. (555) 123-4567" />
       </div>
       <div class="field">
-        <label>Email (for your pickup confirmation) *</label>
+        <label>${t('email_label')} *</label>
         <input id="customerEmail" type="email" required placeholder="you@example.com" />
       </div>
       <div class="field" id="deliveryAddressField" style="${orderMode==='delivery'?'':'display:none;'}">
@@ -3253,7 +3306,7 @@ function renderDrawer(showConfirm){
         <input id="deliveryAddress" placeholder="Street, city, zip" />
       </div>
       <div class="field">
-        <label>Notes (optional)</label>
+        <label>${t('order_note_label')}</label>
         <textarea id="orderNote" rows="2" placeholder="Allergies, no onions, extra sauce…"></textarea>
       </div>
       <div id="pickupAddressNote" style="${orderMode==='delivery'?'display:none;':''}">
@@ -3275,11 +3328,11 @@ function renderDrawer(showConfirm){
         <span style="font-size:18px;">🔒</span>
         <label style="margin:0;">You'll enter your card details securely on the next screen.</label>
       </div>
-      <div class="total-row"><span>Subtotal</span><span class="mono">$${subtotal.toFixed(2)}</span></div>
-      <div class="total-row"><span>Tax (${(SITE.taxRate!=null?SITE.taxRate:8.375)}%)</span><span class="mono">$${tax.toFixed(2)}</span></div>
-      <div class="total-row" style="font-weight:800;font-size:16px;"><span>Total</span><span class="mono">$${total.toFixed(2)}</span></div>
+      <div class="total-row"><span>${t('subtotal')}</span><span class="mono">$${subtotal.toFixed(2)}</span></div>
+      <div class="total-row"><span>${t('tax')} (${(SITE.taxRate!=null?SITE.taxRate:8.375)}%)</span><span class="mono">$${tax.toFixed(2)}</span></div>
+      <div class="total-row" style="font-weight:800;font-size:16px;"><span>${t('total')}</span><span class="mono">$${total.toFixed(2)}</span></div>
       ${!storeOpen ? `<div class="pickup-address-note" style="color:var(--ink);border-color:var(--ink);">We're currently closed — online ordering isn't available right now.</div>` : ''}
-      <button class="submit-btn" id="submitOrder" disabled>${(SITE.onlinePaymentEnabled && paymentMethod==='online') ? 'Continue to Payment' : 'Place Order'}</button>`;
+      <button class="submit-btn" id="submitOrder" disabled>${(SITE.onlinePaymentEnabled && paymentMethod==='online') ? 'Continue to Payment' : t('place_order')}</button>`;
   }
   drawer.innerHTML = html;
 
@@ -3493,14 +3546,17 @@ async function submitOrder(){
       btn.disabled = true; btn.textContent = 'Place Order';
       return;
     }
-    if(!res.ok) throw new Error('order failed');
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.message || 'order failed');
+    }
     const order = await res.json();
     saveLastOrderForReorder();
     renderDrawer(true);
     startTracking(order.id);
   }catch(e){
     btn.disabled = false; btn.textContent = 'Place Order';
-    alert('Something went wrong — please try again.');
+    alert(e.message && e.message !== 'order failed' ? e.message : 'Something went wrong — please try again.');
     console.error(e);
   }
 }
@@ -3528,12 +3584,15 @@ async function submitOrderOnline(){
       btn.disabled = true; btn.textContent = 'Continue to Payment';
       return;
     }
-    if(!res.ok) throw new Error('checkout failed');
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.message || 'checkout failed');
+    }
     const data = await res.json();
     window.location.href = data.url;
   }catch(e){
     btn.disabled = false; btn.textContent = 'Continue to Payment';
-    alert('Something went wrong starting payment — please try again.');
+    alert(e.message && e.message !== 'checkout failed' ? e.message : 'Something went wrong starting payment — please try again.');
     console.error(e);
   }
 }
@@ -3620,6 +3679,18 @@ function goHome(){
 }
 document.getElementById('navHomeBtn').onclick = goHome;
 document.getElementById('brandHomeBtn').onclick = goHome;
+document.getElementById('langToggleBtn').onclick = ()=>{
+  setLang(currentLang === 'en' ? 'zh' : 'en');
+};
+function applyStaticTranslations(){
+  const homeBtn = document.getElementById('navHomeBtn');
+  const contactBtn = document.getElementById('navContactBtn');
+  const waitBanner = document.getElementById('waitTimeBanner');
+  if(homeBtn) homeBtn.textContent = t('home');
+  if(contactBtn) contactBtn.textContent = t('contact');
+  if(waitBanner) waitBanner.textContent = t('wait_time');
+}
+applyStaticTranslations();
 function renderContact(){
   const c = SITE.contact || {};
   const rows = [];

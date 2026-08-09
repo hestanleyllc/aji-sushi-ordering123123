@@ -771,6 +771,14 @@ app.post('/api/menu-soldout', requireKitchenAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- Data backup: download a full snapshot on demand, from the admin panel ----
+app.get('/api/backup', requireAdminAuth, (req, res) => {
+  const dateStr = new Date().toISOString().slice(0,10);
+  res.set('Content-Type', 'application/json');
+  res.set('Content-Disposition', `attachment; filename="aji-sushi-backup-${dateStr}.json"`);
+  res.send(JSON.stringify(data, null, 2));
+});
+
 // ---- Import menu from a photo (uses the Anthropic API to read the image) ----
 app.post('/api/import-menu-photo', requireAdminAuth, async (req, res) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -1015,44 +1023,61 @@ function findDishById(dishId){
   return null;
 }
 
+function findDishByName(name){
+  if(!name) return null;
+  for(const section of (data.config.menu || [])){
+    const found = (section.items || []).find(d => d.name === name);
+    if(found) return found;
+  }
+  return null;
+}
+
 // Recomputes every item's price, subtotal, tax and total directly from the
 // menu data stored on the server — the client's submitted prices are never
 // trusted. This is what stops someone from tampering with the order request
-// to pay less than the real price.
+// to pay less than the real price. Falls back to matching by dish name if the
+// id doesn't match anything (e.g. the customer's browser had a slightly stale
+// copy of the menu cached) — a name match is still a real, current menu item,
+// so it's still safe, and it means a minor sync hiccup doesn't block ordering.
 function computeAuthoritativePricing(items){
-  const taxRate = (data.config.siteInfo && Number(data.config.siteInfo.taxRate)) || 0;
-  let subtotal = 0;
-  const validatedItems = [];
-  for(const it of items){
-    const dish = it.dishId ? findDishById(it.dishId) : null;
-    if(!dish){
-      return { error: `We couldn't find "${it.name || 'an item'}" on the current menu. Please refresh the page and try again.` };
-    }
-    if(dish.soldOut){
-      return { error: `Sorry, "${dish.name}" just sold out. Please remove it and try again.` };
-    }
-    let unitPrice = Number(dish.price) || 0;
-    if(it.options && Array.isArray(dish.optionGroups)){
-      for(const group of dish.optionGroups){
-        const selected = it.options[group.label];
-        if(selected == null) continue;
-        const selArr = Array.isArray(selected) ? selected : [selected];
-        for(const choiceName of selArr){
-          const choice = (group.choices || []).find(c => (typeof c === 'string' ? c : c.name) === choiceName);
-          if(choice && typeof choice !== 'string'){
-            unitPrice += Number(choice.price) || 0;
+  try{
+    const taxRate = (data.config.siteInfo && Number(data.config.siteInfo.taxRate)) || 0;
+    let subtotal = 0;
+    const validatedItems = [];
+    for(const it of items){
+      const dish = (it.dishId && findDishById(it.dishId)) || findDishByName(it.name);
+      if(!dish){
+        return { error: `We couldn't find "${it.name || 'an item'}" on the current menu. Please refresh the page and try again.` };
+      }
+      if(dish.soldOut){
+        return { error: `Sorry, "${dish.name}" just sold out. Please remove it and try again.` };
+      }
+      let unitPrice = Number(dish.price) || 0;
+      if(it.options && Array.isArray(dish.optionGroups)){
+        for(const group of dish.optionGroups){
+          const selected = it.options[group.label];
+          if(selected == null) continue;
+          const selArr = Array.isArray(selected) ? selected : [selected];
+          for(const choiceName of selArr){
+            const choice = (group.choices || []).find(c => (typeof c === 'string' ? c : c.name) === choiceName);
+            if(choice && typeof choice !== 'string'){
+              unitPrice += Number(choice.price) || 0;
+            }
           }
         }
       }
+      const qty = Math.max(1, parseInt(it.qty, 10) || 1);
+      subtotal += unitPrice * qty;
+      validatedItems.push({ ...it, price: Math.round(unitPrice * 100) / 100, name: dish.name });
     }
-    const qty = Math.max(1, parseInt(it.qty, 10) || 1);
-    subtotal += unitPrice * qty;
-    validatedItems.push({ ...it, price: Math.round(unitPrice * 100) / 100, name: dish.name });
+    subtotal = Math.round(subtotal * 100) / 100;
+    const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+    const total = Math.round((subtotal + tax) * 100) / 100;
+    return { items: validatedItems, subtotal, tax, total };
+  }catch(err){
+    console.error('computeAuthoritativePricing crashed — this should never happen:', err);
+    return { error: 'Something went wrong checking your order. Please try again, or call the restaurant if this keeps happening.' };
   }
-  subtotal = Math.round(subtotal * 100) / 100;
-  const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
-  const total = Math.round((subtotal + tax) * 100) / 100;
-  return { items: validatedItems, subtotal, tax, total };
 }
 
 function validateOrderPayload(body){
@@ -1269,12 +1294,42 @@ setInterval(() => {
   printQueue = printQueue.filter(j => j.createdAt > printCutoff);
 }, 60 * 60 * 1000);
 
+// ---- Daily data backup email ----
+// Emails a full JSON snapshot once a day to the restaurant's notification
+// address. This matters because the persistent disk is a single point of
+// failure — if it were ever lost, this email is the only copy that lives
+// somewhere else entirely. Checked hourly; only actually sends once the
+// calendar day (in the restaurant's timezone) has changed since the last send.
+let lastBackupEmailDate = null;
+function checkDailyBackupEmail(){
+  if(!mailTransporter || !data) return;
+  const to = (data.config.siteInfo && data.config.siteInfo.notifyEmail) || process.env.EMAIL_USER;
+  if(!to) return;
+  const tz = (data.config.siteInfo && data.config.siteInfo.orderingHours && data.config.siteInfo.orderingHours.timezone) || 'America/New_York';
+  const todayKey = getTodayKey(tz);
+  if(lastBackupEmailDate === todayKey) return;
+  lastBackupEmailDate = todayKey;
+  const restaurantName = (data.config.siteInfo && data.config.siteInfo.name) || 'AJI SUSHI';
+  mailTransporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to,
+    subject: `${restaurantName} — Daily data backup (${todayKey})`,
+    text: `Attached is today's automatic backup of your menu, settings, and recent orders. Keep this email — it's a copy of your data stored somewhere outside of Render, in case anything ever happens to the hosting.`,
+    attachments: [{
+      filename: `aji-sushi-backup-${todayKey}.json`,
+      content: JSON.stringify(data, null, 2),
+    }],
+  }).catch(err => console.error('Daily backup email failed', err));
+}
+setInterval(checkDailyBackupEmail, 60 * 60 * 1000);
+
 const PORT = process.env.PORT || 3000;
 loadData().then((loaded) => {
   data = loaded;
   app.listen(PORT, () => {
     console.log('AJI SUSHI server running on port ' + PORT);
   });
+  setTimeout(checkDailyBackupEmail, 60 * 1000);
 }).catch((e) => {
   console.error('Failed to load initial data, starting with defaults', e);
   data = freshData();
