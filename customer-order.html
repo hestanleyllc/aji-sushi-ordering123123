@@ -3497,7 +3497,7 @@ function closeDrawer(){
 function buildOrderPayload(){
   const {subtotal,tax,total} = cartCountTotal();
   const items = cartItems.map(ci=>({
-    name: ci.name, qty: ci.qty, price: ci.price, note: ci.note || '', options: ci.options || {}, category: ci.category || '', printRouting: ci.printRouting || []
+    dishId: ci.dishId, name: ci.name, qty: ci.qty, price: ci.price, note: ci.note || '', options: ci.options || {}, category: ci.category || '', printRouting: ci.printRouting || []
   }));
   const name = document.getElementById('customerName').value;
   const phone = document.getElementById('customerPhone').value;

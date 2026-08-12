@@ -69,16 +69,38 @@ function callAboutUnconfirmedOrder(order){
   }).catch(err => console.error('Failed to place order reminder call', err));
 }
 
+// Twilio requires phone numbers in E.164 format (e.g. +18452249960). Customers
+// type their number in free text at checkout ("845-224-9960", "(845) 224-9960",
+// etc.) which Twilio would otherwise silently reject. This assumes a US/Canada
+// number (10 digits, or 11 starting with a leading 1) since that's who this
+// restaurant serves — returns null (skip sending) rather than guess wrong for
+// anything else, like an already-international number that wasn't entered with
+// a leading +.
+function normalizePhoneForSms(phone){
+  if(!phone) return null;
+  const trimmed = String(phone).trim();
+  if(trimmed.startsWith('+')) return trimmed.replace(/[^\d+]/g, '');
+  const digits = trimmed.replace(/[^\d]/g, '');
+  if(digits.length === 10) return '+1' + digits;
+  if(digits.length === 11 && digits[0] === '1') return '+' + digits;
+  return null;
+}
+
 // Texts the customer once their pickup time is confirmed. Separate from the
 // staff phone-call reminders above — this uses the same Twilio account/number,
 // just sent to the customer instead of the restaurant.
 function smsCustomerOrderConfirmed(order){
   if(!twilioClient || !order.phone) return;
+  const to = normalizePhoneForSms(order.phone);
+  if(!to){
+    console.error('Could not normalize customer phone for SMS, skipping:', order.phone);
+    return;
+  }
   const cfg = data.config.siteInfo || {};
   const restaurantName = cfg.name || 'the restaurant';
   const body = `${restaurantName}: Your order #${order.num} is confirmed! Pickup time: ${order.pickupTime}. Thanks for ordering with us.`;
   twilioClient.messages.create({
-    to: order.phone,
+    to,
     from: TWILIO_FROM_NUMBER,
     body,
   }).catch(err => console.error('Failed to text customer order confirmation', err));
@@ -306,6 +328,10 @@ async function printOrderTicket(order){
 // A small script (print-bridge.js) run on a computer connected to the printer polls
 // this queue and prints directly — no third-party subscription needed.
 const PRINT_BRIDGE_SECRET = process.env.PRINT_BRIDGE_SECRET || '';
+// Same shared-secret, machine-to-machine pattern as PRINT_BRIDGE_SECRET above —
+// this one gates the new /api/pos-sync/* routes that let a physical POS system
+// (running at the restaurant, not a browser) pull newly-confirmed orders.
+const POS_SYNC_SECRET = process.env.POS_SYNC_SECRET || '';
 let printQueue = []; // {id, station, title, content(base64 escpos), createdAt}
 
 function queueFreePrintJobs(order){
@@ -1023,8 +1049,16 @@ function findDishById(dishId){
   return null;
 }
 
-function findDishByName(name){
+function findDishByName(name, category){
   if(!name) return null;
+  // If we know which category this item came from, check there first — this
+  // avoids matching the wrong dish when two categories happen to have an
+  // identically-named item (this menu has at least one such case).
+  if(category){
+    const section = (data.config.menu || []).find(c => c.cat === category);
+    const found = section && (section.items || []).find(d => d.name === name);
+    if(found) return found;
+  }
   for(const section of (data.config.menu || [])){
     const found = (section.items || []).find(d => d.name === name);
     if(found) return found;
@@ -1052,7 +1086,7 @@ function computeAuthoritativePricing(items){
     let subtotal = 0;
     const validatedItems = [];
     for(const it of items){
-      const dish = (it.dishId && findDishById(it.dishId)) || findDishByName(it.name);
+      const dish = (it.dishId && findDishById(it.dishId)) || findDishByName(it.name, it.category);
       if(!dish){
         return { error: `We couldn't find "${it.name || 'an item'}" on the current menu. Please refresh the page and try again.` };
       }
@@ -1186,12 +1220,21 @@ app.post('/api/checkout', async (req, res) => {
   if(err){
     return res.status(err.code === 'closed' || err.code === 'category_closed' ? 403 : 400).json({ error: err.code || 'invalid', message: err.error });
   }
+  // Same authoritative re-pricing used for pay-in-store orders — this is what
+  // actually determines how much Stripe charges, so it has to happen here too,
+  // not just after payment succeeds. Otherwise the amount actually charged
+  // could still be whatever the browser sent.
+  const pricing = computeAuthoritativePricing(body.items);
+  if(pricing.error){
+    return res.status(400).json({ error: 'invalid_items', message: pricing.error });
+  }
+  const validatedBody = { ...body, items: pricing.items, subtotal: pricing.subtotal, tax: pricing.tax, total: pricing.total };
   const checkoutId = 'chk_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-  pendingCheckouts.set(checkoutId, body);
+  pendingCheckouts.set(checkoutId, validatedBody);
   setTimeout(() => pendingCheckouts.delete(checkoutId), 30 * 60 * 1000); // expire abandoned checkouts after 30 min
 
   try{
-    const line_items = body.items.map(it => ({
+    const line_items = pricing.items.map(it => ({
       price_data: {
         currency: 'usd',
         product_data: { name: it.name },
@@ -1199,9 +1242,9 @@ app.post('/api/checkout', async (req, res) => {
       },
       quantity: it.qty,
     }));
-    if(body.tax){
+    if(pricing.tax){
       line_items.push({
-        price_data: { currency: 'usd', product_data: { name: 'Sales Tax' }, unit_amount: Math.round(body.tax * 100) },
+        price_data: { currency: 'usd', product_data: { name: 'Sales Tax' }, unit_amount: Math.round(pricing.tax * 100) },
         quantity: 1,
       });
     }
@@ -1289,6 +1332,47 @@ app.post('/api/print-queue/:id/ack', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- POS sync API ----
+// Lets the restaurant's own POS system (a separate app, not this website)
+// pull newly-CONFIRMED orders and import them automatically. Same
+// shared-secret pattern as the print-bridge above (machine-to-machine, not a
+// staff login) — and since the POS runs on its own device hitting this as a
+// different origin, these routes explicitly allow cross-origin requests
+// (nothing else on this server needs to, so it's scoped to just these two).
+function posSyncCors(req, res){
+  res.set({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  });
+}
+app.options('/api/pos-sync/orders', (req, res) => { posSyncCors(req, res); res.sendStatus(204); });
+app.options('/api/pos-sync/orders/:id/ack', (req, res) => { posSyncCors(req, res); res.sendStatus(204); });
+
+app.get('/api/pos-sync/orders', (req, res) => {
+  posSyncCors(req, res);
+  if(!POS_SYNC_SECRET || req.query.secret !== POS_SYNC_SECRET){
+    return res.status(401).json({ error: 'invalid_secret' });
+  }
+  // Only orders staff has already confirmed (with a pickup time) on
+  // restaurant-orders.html, and that haven't been pulled into the POS yet —
+  // the existing accept/reject workflow there is unchanged.
+  const pending = data.orders.filter(o => o.status === 'confirmed' && !o.posSynced);
+  res.json(pending);
+});
+
+app.post('/api/pos-sync/orders/:id/ack', (req, res) => {
+  posSyncCors(req, res);
+  if(!POS_SYNC_SECRET || req.query.secret !== POS_SYNC_SECRET){
+    return res.status(401).json({ error: 'invalid_secret' });
+  }
+  const idx = data.orders.findIndex(o => o.id === req.params.id);
+  if(idx === -1) return res.status(404).json({ error: 'not_found' });
+  data.orders[idx].posSynced = true;
+  saveData();
+  res.json({ ok: true });
+});
+
 // Housekeeping: drop orders older than 48h so data.json doesn't grow forever
 setInterval(() => {
   if(!data) return;
@@ -1301,34 +1385,35 @@ setInterval(() => {
   printQueue = printQueue.filter(j => j.createdAt > printCutoff);
 }, 60 * 60 * 1000);
 
-// ---- Daily data backup email ----
-// Emails a full JSON snapshot once a day to the restaurant's notification
+// ---- Monthly data backup email ----
+// Emails a full JSON snapshot once a month to the restaurant's notification
 // address. This matters because the persistent disk is a single point of
 // failure — if it were ever lost, this email is the only copy that lives
 // somewhere else entirely. Checked hourly; only actually sends once the
-// calendar day (in the restaurant's timezone) has changed since the last send.
-let lastBackupEmailDate = null;
-function checkDailyBackupEmail(){
+// calendar month (in the restaurant's timezone) has changed since the last send.
+let lastBackupEmailMonth = null;
+function checkMonthlyBackupEmail(){
   if(!mailTransporter || !data) return;
   const to = (data.config.siteInfo && data.config.siteInfo.notifyEmail) || process.env.EMAIL_USER;
   if(!to) return;
   const tz = (data.config.siteInfo && data.config.siteInfo.orderingHours && data.config.siteInfo.orderingHours.timezone) || 'America/New_York';
-  const todayKey = getTodayKey(tz);
-  if(lastBackupEmailDate === todayKey) return;
-  lastBackupEmailDate = todayKey;
+  const todayKey = getTodayKey(tz); // 'YYYY-MM-DD'
+  const monthKey = todayKey.slice(0, 7); // 'YYYY-MM'
+  if(lastBackupEmailMonth === monthKey) return;
+  lastBackupEmailMonth = monthKey;
   const restaurantName = (data.config.siteInfo && data.config.siteInfo.name) || 'AJI SUSHI';
   mailTransporter.sendMail({
     from: process.env.EMAIL_USER,
     to,
-    subject: `${restaurantName} — Daily data backup (${todayKey})`,
-    text: `Attached is today's automatic backup of your menu, settings, and recent orders. Keep this email — it's a copy of your data stored somewhere outside of Render, in case anything ever happens to the hosting.`,
+    subject: `${restaurantName} — Monthly data backup (${monthKey})`,
+    text: `Attached is this month's automatic backup of your menu, settings, and recent orders. Keep this email — it's a copy of your data stored somewhere outside of Render, in case anything ever happens to the hosting. You can also download a backup anytime from the admin panel.`,
     attachments: [{
       filename: `aji-sushi-backup-${todayKey}.json`,
       content: JSON.stringify(data, null, 2),
     }],
-  }).catch(err => console.error('Daily backup email failed', err));
+  }).catch(err => console.error('Monthly backup email failed', err));
 }
-setInterval(checkDailyBackupEmail, 60 * 60 * 1000);
+setInterval(checkMonthlyBackupEmail, 60 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
 loadData().then((loaded) => {
@@ -1336,7 +1421,7 @@ loadData().then((loaded) => {
   app.listen(PORT, () => {
     console.log('AJI SUSHI server running on port ' + PORT);
   });
-  setTimeout(checkDailyBackupEmail, 60 * 1000);
+  setTimeout(checkMonthlyBackupEmail, 60 * 1000);
 }).catch((e) => {
   console.error('Failed to load initial data, starting with defaults', e);
   data = freshData();

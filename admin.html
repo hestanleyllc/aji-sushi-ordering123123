@@ -181,6 +181,14 @@
   <h2>Login Credentials</h2>
   <div class="card" id="credentialsCard"></div>
 
+  <h2>Data Backup</h2>
+  <div class="card">
+    <div style="font-size:12px;color:#7a6c46;margin-bottom:10px;">
+      A full copy of your menu, settings, and recent orders is also emailed to you automatically once a day. Use this button to download a copy right now.
+    </div>
+    <button class="add-cat-btn" id="downloadBackupBtn">⬇ Download Backup Now</button>
+  </div>
+
   <h2>Menu</h2>
   <button class="add-cat-btn" id="loadFullMenuBtn" style="border-color:var(--diner-red);color:var(--diner-red);margin-bottom:12px;">⚠️ Load Full Menu (201 items) — replaces everything below</button>
   <div class="menu-layout">
@@ -3279,6 +3287,10 @@ document.getElementById('saveBtn').onclick = async ()=>{
     console.error(e);
   }
   btn.disabled = false; btn.textContent = 'Save Changes';
+};
+
+document.getElementById('downloadBackupBtn').onclick = ()=>{
+  window.location.href = '/api/backup';
 };
 
 loadConfig();
