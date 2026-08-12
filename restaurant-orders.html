@@ -158,6 +158,7 @@
   }
   .tk-btn.reject{background:var(--red-soft);color:var(--red);flex:0 0 52px;font-size:18px;}
   .tk-btn.confirm{background:var(--green);color:#fff;}
+  .tk-btn.accept-step1{background:var(--green);color:#fff;}
   .tk-btn.sync-btn{background:var(--blue);color:#fff;width:100%;}
   .tk-btn.confirm:disabled{background:var(--line);color:var(--stone-light);cursor:not-allowed;}
   .tk-btn.start{background:var(--amber);color:#fff;}
@@ -278,6 +279,7 @@ let knownOrderIds = new Set();
 let firstLoad = true;
 let audioUnlocked = false;
 let pendingSelections = {}; // orderId -> {offsetMinutes, customTime}
+let showingTimeInputFor = new Set(); // orderIds where "Accept" was tapped, revealing the time input step
 let currentView = 'list'; // 'list' | 'detail' | 'settings'
 
 const MISSED_ORDER_MINUTES = 5;
@@ -717,6 +719,18 @@ function renderPrintStatus(order){
 }
 
 
+function formatPhoneDisplay(phone){
+  if(!phone) return '';
+  const digits = String(phone).replace(/[^0-9]/g, '');
+  if(digits.length === 10){
+    return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
+  }
+  if(digits.length === 11 && digits[0] === '1'){
+    return `${digits.slice(1,4)}-${digits.slice(4,7)}-${digits.slice(7)}`;
+  }
+  return phone; // not a recognizable 10/11-digit US number — show as typed rather than mangle it
+}
+
 function formatClockTime(ts){
   return new Date(ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
 }
@@ -811,7 +825,7 @@ function renderListView(){
       return `
       <div class="compact-row" data-open-id="${o.id}">
         <div>
-          <div class="compact-row-name">${o.isNewCustomer?'⭐ ':''}${o.name?escapeHtml(o.name):(o.phone?escapeHtml(o.phone):'Guest')}${missed?' <span class="missed-badge">MISSED ORDER</span>':''}</div>
+          <div class="compact-row-name">${o.isNewCustomer?'⭐ ':''}${o.name?escapeHtml(o.name):(o.phone?escapeHtml(formatPhoneDisplay(o.phone)):'Guest')}${missed?' <span class="missed-badge">MISSED ORDER</span>':''}</div>
           <div class="compact-row-sub">#${o.num} · ${timeAgo(o.createdAt)}</div>
         </div>
         <div class="compact-row-amount">$${Number(o.total).toFixed(2)}</div>
@@ -870,7 +884,7 @@ function renderDetailView(o){
     return `<li><div><span><span class="q">${it.qty}×</span>${escapeHtml(it.name)}</span>${opts}${itemNote}</div><span>$${it.price*it.qty}</span></li>`;
   }).join('');
   const noteHtml = o.note ? `<div class="ticket-note">Note: ${escapeHtml(o.note)}</div>` : '';
-  const phoneHtml = o.phone ? `📞 <a href="tel:${escapeHtml(o.phone.replace(/[^0-9+]/g,''))}">${escapeHtml(o.phone)}</a>` : '';
+  const phoneHtml = o.phone ? `📞 <a href="tel:${escapeHtml(o.phone.replace(/[^0-9+]/g,''))}">${escapeHtml(formatPhoneDisplay(o.phone))}</a>` : '';
   const emailHtml = o.email ? `<div class="ticket-email">✉ ${escapeHtml(o.email)}</div>` : '';
   const firstOrderBadge = o.isNewCustomer ? `<div class="first-order-badge">⭐ 1st order</div>` : '';
   const firstOrderTip = o.isNewCustomer ? `<div class="first-order-tip">First time order! You may want to confirm with this client by calling.</div>` : '';
@@ -884,15 +898,23 @@ function renderDetailView(o){
   if(isPending){
     const sel = pendingSelections[o.id] || {};
     const preview = computePickupLabel(sel);
-    bodyHtml = `
-      <div class="custom-time-row">
-        <input type="text" inputmode="numeric" placeholder="Minutes, e.g. 15" data-id="${o.id}" class="custom-time-input" value="${sel.offsetMinutes||''}">
-        <span class="minutes-suffix">min</span>
-      </div>
-      <div class="ticket-actions">
-        <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
-        <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>Accept</button>
-      </div>`;
+    if(showingTimeInputFor.has(o.id)){
+      bodyHtml = `
+        <div class="custom-time-row">
+          <input type="text" inputmode="numeric" placeholder="Minutes, e.g. 15" data-id="${o.id}" class="custom-time-input" value="${sel.offsetMinutes||''}">
+          <span class="minutes-suffix">min</span>
+        </div>
+        <div class="ticket-actions">
+          <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
+          <button class="tk-btn confirm" data-id="${o.id}" ${preview?'':'disabled'}>ACCEPT</button>
+        </div>`;
+    } else {
+      bodyHtml = `
+        <div class="ticket-actions">
+          <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
+          <button class="tk-btn accept-step1" data-act="showTimeInput" data-id="${o.id}">Accept</button>
+        </div>`;
+    }
   } else {
     // Manual POS-sync control — harmless to show even if the POS is set to
     // auto-sync everything; it only matters when the POS's own "线上订单"
@@ -974,6 +996,14 @@ function renderDetailView(o){
       const confirmBtn = el.querySelector(`.tk-btn.confirm[data-id="${id}"]`);
       if(confirmBtn) confirmBtn.disabled = !valid;
     };
+    inp.onfocus = ()=>{
+      // Wait for the on-screen keyboard to finish animating in, then make sure
+      // the ACCEPT button (not just the input) is still visible above it.
+      setTimeout(()=>{
+        const confirmBtn = el.querySelector(`.tk-btn.confirm[data-id="${inp.dataset.id}"]`);
+        if(confirmBtn) confirmBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 300);
+    };
   });
   el.querySelectorAll('[data-reject-id]').forEach(btn=>{
     btn.onclick = async ()=>{
@@ -982,10 +1012,25 @@ function renderDetailView(o){
       try{
         await fetch('/api/orders/'+id, {method:'DELETE'});
         delete pendingSelections[id];
+        showingTimeInputFor.delete(id);
         currentView = 'list';
         currentDetailOrderId = null;
         renderKitchen();
       }catch(e){ console.error(e); alert('Could not reject this order — please try again.'); }
+    };
+  });
+  el.querySelectorAll('[data-act="showTimeInput"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      showingTimeInputFor.add(btn.dataset.id);
+      renderDetailView(o);
+      // Give the input a moment to actually be in the DOM, then focus it —
+      // most mobile keyboards will auto-scroll the focused field into view,
+      // and the extra bottom padding on .detail-body keeps the Accept button
+      // from ending up hidden underneath the keyboard.
+      setTimeout(()=>{
+        const inp = document.querySelector('.custom-time-input[data-id="'+btn.dataset.id+'"]');
+        if(inp) inp.focus();
+      }, 50);
     };
   });
   el.querySelectorAll('[data-sync-id]').forEach(btn=>{
@@ -1054,6 +1099,7 @@ function renderDetailView(o){
           return;
         }
         delete pendingSelections[id];
+        showingTimeInputFor.delete(id);
         await renderKitchen();
       }catch(e){
         console.error(e);
