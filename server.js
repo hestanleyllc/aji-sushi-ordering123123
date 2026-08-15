@@ -819,7 +819,9 @@ function findDishInMenu(dishId){
 }
 const IMAGE_MIME_EXT = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 
-app.post('/api/upload-dish-image', requireAdminAuth, (req, res) => {
+const sharp = require('sharp');
+
+app.post('/api/upload-dish-image', requireAdminAuth, async (req, res) => {
   const { dishId, imageData } = req.body || {};
   if(!dishId || !imageData) return res.status(400).json({ error: 'dishId and imageData are required' });
   const dish = findDishInMenu(dishId);
@@ -828,20 +830,37 @@ app.post('/api/upload-dish-image', requireAdminAuth, (req, res) => {
   const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(imageData);
   if(!match) return res.status(400).json({ error: 'imageData must be a base64 image data URL' });
   const mimeType = match[1];
-  const ext = IMAGE_MIME_EXT[mimeType];
-  if(!ext) return res.status(400).json({ error: 'Unsupported image type — please use JPG, PNG, WEBP, or GIF' });
-  const buffer = Buffer.from(match[2], 'base64');
-  if(buffer.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'Image is too large (max 8MB)' });
+  if(!IMAGE_MIME_EXT[mimeType]) return res.status(400).json({ error: 'Unsupported image type — please use JPG, PNG, WEBP, or GIF' });
+  const rawBuffer = Buffer.from(match[2], 'base64');
+  if(rawBuffer.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'Image is too large (max 8MB)' });
 
-  // Remove any previous photo for this dish first, in case the format changed
-  // (e.g. re-uploading as .png after an earlier .jpg) so old files don't pile up.
+  // Every upload gets resized down to a sensible max width and re-compressed
+  // as a JPEG, no matter the original size or format — with 200+ menu items
+  // this is what keeps the persistent disk (and every customer's data usage)
+  // from adding up fast. 900px is plenty for both the menu thumbnail and the
+  // full-size lightbox view.
+  let outputBuffer;
+  try{
+    outputBuffer = await sharp(rawBuffer)
+      .rotate() // respect the photo's original orientation (phone photos often need this)
+      .resize({ width: 900, withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+  }catch(e){
+    console.error('Image processing failed', e);
+    return res.status(400).json({ error: 'Could not process that image — please try a different photo.' });
+  }
+
+  // Remove any previous photo for this dish first (old uploads may have been
+  // saved under a different extension, from before every photo was normalized
+  // to .jpg) so old files don't pile up.
   ['jpg','png','webp','gif'].forEach(oldExt=>{
     const oldPath = path.join(IMAGES_DIR, `${dishId}.${oldExt}`);
     if(fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
   });
 
-  const filename = `${dishId}.${ext}`;
-  fs.writeFileSync(path.join(IMAGES_DIR, filename), buffer);
+  const filename = `${dishId}.jpg`;
+  fs.writeFileSync(path.join(IMAGES_DIR, filename), outputBuffer);
   dish.image = `/images/${filename}?v=${Date.now()}`; // cache-bust so browsers pick up a re-uploaded photo
   saveData();
   res.json({ ok: true, image: dish.image });

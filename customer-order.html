@@ -3053,7 +3053,7 @@ function renderCustomer(){
       const canOrder = storeOpen && catOpen && !it.soldOut;
       html += `
         <div class="dish">
-          ${it.image ? `<img src="${escapeHtml(it.image)}" class="dish-thumb" data-act="viewPhoto" data-src="${escapeHtml(it.image)}" alt="${escapeHtml(it.name)}">` : ''}
+          ${it.image ? `<img src="${escapeHtml(it.image)}" class="dish-thumb" data-act="viewPhoto" data-src="${escapeHtml(it.image)}" alt="${escapeHtml(it.name)}" loading="lazy" decoding="async">` : ''}
           <div class="dish-info">
             <h3>${escapeHtml(it.name)}${it.hot ? ' <span class="hot-badge">🔥 Hot Seller</span>' : ''}</h3>
             <p>${escapeHtml(it.desc)}</p>
