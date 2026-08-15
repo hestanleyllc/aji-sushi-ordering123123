@@ -146,6 +146,10 @@
     transition:border-color .15s, box-shadow .15s;
   }
   .dish:hover{border-color:var(--orange);box-shadow:0 2px 10px rgba(0,0,0,0.05);}
+  .dish-thumb{
+    width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none;cursor:pointer;
+    background:var(--paper-deep);
+  }
   .dish-info{flex:1;min-width:0;}
   .dish-info h3{font-size:15px;color:var(--ink);margin:0;font-weight:700;}
   .hot-badge{
@@ -242,6 +246,19 @@
 
   .item-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(2px);z-index:70;}
   .item-modal-backdrop.open{display:block;}
+  .photo-lightbox-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:80;}
+  .photo-lightbox-backdrop.open{display:block;}
+  .photo-lightbox{
+    display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    z-index:81;max-width:92vw;max-height:86vh;
+  }
+  .photo-lightbox.open{display:block;}
+  .photo-lightbox img{max-width:92vw;max-height:80vh;border-radius:14px;display:block;}
+  .photo-lightbox-close{
+    position:absolute;top:-14px;right:-14px;width:34px;height:34px;border-radius:50%;
+    background:#fff;color:var(--ink);border:none;font-size:18px;cursor:pointer;
+    box-shadow:0 4px 12px rgba(0,0,0,0.3);
+  }
   .item-modal{
     display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
     width:88%;max-width:380px;max-height:84vh;overflow-y:auto;
@@ -347,6 +364,8 @@
 
 <div class="item-modal-backdrop" id="itemModalBackdrop"></div>
 <div class="item-modal" id="itemModal"></div>
+<div class="photo-lightbox-backdrop" id="photoLightboxBackdrop"></div>
+<div class="photo-lightbox" id="photoLightbox"></div>
 
 <div class="closed-banner" id="closedBanner"></div>
 <div class="customer" id="customerView"></div>
@@ -3034,6 +3053,7 @@ function renderCustomer(){
       const canOrder = storeOpen && catOpen && !it.soldOut;
       html += `
         <div class="dish">
+          ${it.image ? `<img src="${escapeHtml(it.image)}" class="dish-thumb" data-act="viewPhoto" data-src="${escapeHtml(it.image)}" alt="${escapeHtml(it.name)}">` : ''}
           <div class="dish-info">
             <h3>${escapeHtml(it.name)}${it.hot ? ' <span class="hot-badge">🔥 Hot Seller</span>' : ''}</h3>
             <p>${escapeHtml(it.desc)}</p>
@@ -3598,7 +3618,7 @@ async function submitOrderOnline(){
 }
 
 document.getElementById('customerView').addEventListener('click', (e)=>{
-  const t = e.target.closest('.cat-pill, .qty-btn');
+  const t = e.target.closest('.cat-pill, .qty-btn, .dish-thumb');
   if(!t) return;
   if(t.classList.contains('cat-pill')){
     activeCat = t.dataset.cat;
@@ -3608,10 +3628,29 @@ document.getElementById('customerView').addEventListener('click', (e)=>{
     if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
     return;
   }
+  if(t.dataset.act === 'viewPhoto'){
+    openPhotoLightbox(t.dataset.src);
+    return;
+  }
   if(t.dataset.act === 'openItem'){
     openItemModal(t.dataset.id);
   }
 });
+
+function openPhotoLightbox(src){
+  document.getElementById('photoLightbox').innerHTML = `
+    <button class="photo-lightbox-close" id="photoLightboxClose">✕</button>
+    <img src="${escapeHtml(src)}" alt="">
+  `;
+  document.getElementById('photoLightboxBackdrop').classList.add('open');
+  document.getElementById('photoLightbox').classList.add('open');
+  document.getElementById('photoLightboxClose').onclick = closePhotoLightbox;
+}
+function closePhotoLightbox(){
+  document.getElementById('photoLightboxBackdrop').classList.remove('open');
+  document.getElementById('photoLightbox').classList.remove('open');
+}
+document.getElementById('photoLightboxBackdrop').onclick = closePhotoLightbox;
 
 document.getElementById('itemModalBackdrop').onclick = closeItemModal;
 

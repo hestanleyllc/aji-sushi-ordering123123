@@ -570,6 +570,14 @@ app.get('/kitchen-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'ki
 const DATA_DIR = process.env.DATA_DIR || __dirname;
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 
+// Dish photos are saved as real files on the same persistent disk as
+// data.json — NOT embedded as base64 inside data.json itself, which would
+// bloat every /api/config response (loaded on every visit to the ordering
+// page) with every photo on the menu, every time.
+const IMAGES_DIR = path.join(DATA_DIR, 'images');
+try{ fs.mkdirSync(IMAGES_DIR, { recursive: true }); }catch(e){ console.error('Could not create images directory', e); }
+app.use('/images', express.static(IMAGES_DIR, { maxAge: '30d' }));
+
 const DEFAULT_CONFIG = {
   siteInfo: {
     name: 'AJI SUSHI',
@@ -793,6 +801,62 @@ app.post('/api/menu-soldout', requireKitchenAuth, (req, res) => {
     });
   });
   if(!found) return res.status(404).json({ error: 'Dish not found' });
+  saveData();
+  res.json({ ok: true });
+});
+
+// ---- Dish photo upload (admin only) ----
+// Accepts a base64 data URL (from a <input type="file"> read via FileReader
+// in admin.html), writes it to a real file under IMAGES_DIR, and stores just
+// the resulting URL path on the dish — never the image data itself — in
+// data.config.menu.
+function findDishInMenu(dishId){
+  for(const section of (data.config.menu || [])){
+    const found = (section.items || []).find(d => d.id === dishId);
+    if(found) return found;
+  }
+  return null;
+}
+const IMAGE_MIME_EXT = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+
+app.post('/api/upload-dish-image', requireAdminAuth, (req, res) => {
+  const { dishId, imageData } = req.body || {};
+  if(!dishId || !imageData) return res.status(400).json({ error: 'dishId and imageData are required' });
+  const dish = findDishInMenu(dishId);
+  if(!dish) return res.status(404).json({ error: 'Dish not found' });
+
+  const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(imageData);
+  if(!match) return res.status(400).json({ error: 'imageData must be a base64 image data URL' });
+  const mimeType = match[1];
+  const ext = IMAGE_MIME_EXT[mimeType];
+  if(!ext) return res.status(400).json({ error: 'Unsupported image type — please use JPG, PNG, WEBP, or GIF' });
+  const buffer = Buffer.from(match[2], 'base64');
+  if(buffer.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'Image is too large (max 8MB)' });
+
+  // Remove any previous photo for this dish first, in case the format changed
+  // (e.g. re-uploading as .png after an earlier .jpg) so old files don't pile up.
+  ['jpg','png','webp','gif'].forEach(oldExt=>{
+    const oldPath = path.join(IMAGES_DIR, `${dishId}.${oldExt}`);
+    if(fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  });
+
+  const filename = `${dishId}.${ext}`;
+  fs.writeFileSync(path.join(IMAGES_DIR, filename), buffer);
+  dish.image = `/images/${filename}?v=${Date.now()}`; // cache-bust so browsers pick up a re-uploaded photo
+  saveData();
+  res.json({ ok: true, image: dish.image });
+});
+
+app.post('/api/remove-dish-image', requireAdminAuth, (req, res) => {
+  const { dishId } = req.body || {};
+  if(!dishId) return res.status(400).json({ error: 'dishId is required' });
+  const dish = findDishInMenu(dishId);
+  if(!dish) return res.status(404).json({ error: 'Dish not found' });
+  ['jpg','png','webp','gif'].forEach(ext=>{
+    const p = path.join(IMAGES_DIR, `${dishId}.${ext}`);
+    if(fs.existsSync(p)) fs.unlinkSync(p);
+  });
+  delete dish.image;
   saveData();
   res.json({ ok: true });
 });
