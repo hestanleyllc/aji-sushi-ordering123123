@@ -3393,6 +3393,7 @@ document.getElementById('batchPhotoInput').onchange = async ()=>{
   });
 
   let uploaded = 0, failed = 0;
+  const errorMessages = [];
   for(const { file, dish } of matched){
     try{
       const dataUrl = await readFileAsDataUrl(file);
@@ -3405,17 +3406,20 @@ document.getElementById('batchPhotoInput').onchange = async ()=>{
         dish.image = result.image;
         uploaded++;
       } else {
+        const err = await res.json().catch(()=>({}));
+        errorMessages.push(`${file.name}: ${err.error || ('HTTP ' + res.status)}`);
         failed++;
       }
     }catch(e){
       console.error(e);
+      errorMessages.push(`${file.name}: ${e.message}`);
       failed++;
     }
     resultEl.innerHTML = `Uploading ${uploaded+failed} / ${matched.length}…`;
   }
 
   let summary = `<strong>Done.</strong> ${uploaded} photo(s) matched by filename and uploaded automatically.`;
-  if(failed) summary += `<br>${failed} matched file(s) failed to upload — try those again individually.`;
+  if(failed) summary += `<br>${failed} matched file(s) failed to upload:<br>` + errorMessages.map(m=>`• ${escapeHtml(m)}`).join('<br>');
   if(unmatched.length){
     summary += `<br><br><strong>${unmatched.length} file(s) had no matching dish name</strong> — rename them to match exactly, or upload manually from each dish's photo icon below:<br>` + unmatched.map(n=>`• ${escapeHtml(n)}`).join('<br>');
   }

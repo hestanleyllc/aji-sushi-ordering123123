@@ -833,18 +833,27 @@ app.post('/api/upload-dish-image', requireAdminAuth, (req, res) => {
   const buffer = Buffer.from(match[2], 'base64');
   if(buffer.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'Image is too large (max 8MB)' });
 
-  // Remove any previous photo for this dish first, in case the format changed
-  // (e.g. re-uploading as .png after an earlier .jpg) so old files don't pile up.
-  ['jpg','png','webp','gif'].forEach(oldExt=>{
-    const oldPath = path.join(IMAGES_DIR, `${dishId}.${oldExt}`);
-    if(fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-  });
+  try{
+    // Make sure the images folder is really there — if the persistent disk
+    // isn't mounted the way we expect, this is where that would surface.
+    fs.mkdirSync(IMAGES_DIR, { recursive: true });
 
-  const filename = `${dishId}.${ext}`;
-  fs.writeFileSync(path.join(IMAGES_DIR, filename), buffer);
-  dish.image = `/images/${filename}?v=${Date.now()}`; // cache-bust so browsers pick up a re-uploaded photo
-  saveData();
-  res.json({ ok: true, image: dish.image });
+    // Remove any previous photo for this dish first, in case the format changed
+    // (e.g. re-uploading as .png after an earlier .jpg) so old files don't pile up.
+    ['jpg','png','webp','gif'].forEach(oldExt=>{
+      const oldPath = path.join(IMAGES_DIR, `${dishId}.${oldExt}`);
+      if(fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    });
+
+    const filename = `${dishId}.${ext}`;
+    fs.writeFileSync(path.join(IMAGES_DIR, filename), buffer);
+    dish.image = `/images/${filename}?v=${Date.now()}`; // cache-bust so browsers pick up a re-uploaded photo
+    saveData();
+    res.json({ ok: true, image: dish.image });
+  }catch(err){
+    console.error('Dish image upload failed while writing to disk:', err);
+    res.status(500).json({ error: 'Server could not save the photo: ' + err.message });
+  }
 });
 
 app.post('/api/remove-dish-image', requireAdminAuth, (req, res) => {
