@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>AJI SUSHI · Incoming Orders</title>
 <link rel="manifest" href="/kitchen-manifest.json">
 <meta name="theme-color" content="#1C1C1E">
@@ -149,6 +149,13 @@
   .custom-time-row input[type="text"]{
     flex:1;padding:14px;border-radius:10px;border:1.5px solid var(--line);font-family:'Inter',sans-serif;
     font-size:17px;font-weight:700;text-align:center;
+    scroll-margin-top:90px;scroll-margin-bottom:220px;
+  }
+  /* Mobile Safari/PWA: reserve real space for the software keyboard so the
+     pickup-time field cannot end up underneath it. --keyboard-inset is kept
+     in sync with window.visualViewport by JavaScript below. */
+  body.keyboard-open .detail-body{
+    padding-bottom:calc(180px + var(--keyboard-inset, 0px));
   }
   .minutes-suffix{font-size:15px;font-weight:700;color:var(--stone);flex:none;}
   .ticket-actions{display:flex;gap:8px;}
@@ -280,6 +287,61 @@ let firstLoad = true;
 let audioUnlocked = false;
 let pendingSelections = {}; // orderId -> {offsetMinutes, customTime}
 let showingTimeInputFor = new Set(); // orderIds where "Accept" was tapped, revealing the time input step
+
+// Keep the pickup-time editor above the iOS/Android on-screen keyboard.
+// visualViewport reflects the actually visible part of the page while a
+// software keyboard is open; window.innerHeight alone is unreliable in
+// Safari and installed PWAs.
+function ensurePickupEditorVisible(inp){
+  if(!inp || document.activeElement !== inp) return;
+  const vv = window.visualViewport;
+  const viewportTop = vv ? vv.offsetTop : 0;
+  const viewportHeight = vv ? vv.height : window.innerHeight;
+  const safeTop = viewportTop + 78;
+  const safeBottom = viewportTop + viewportHeight - 22;
+  const row = inp.closest('.custom-time-row') || inp;
+  const actions = row.nextElementSibling && row.nextElementSibling.classList.contains('ticket-actions')
+    ? row.nextElementSibling : null;
+  const top = row.getBoundingClientRect().top;
+  const bottom = (actions || row).getBoundingClientRect().bottom;
+
+  if(bottom > safeBottom){
+    window.scrollBy({top: bottom - safeBottom + 18, left: 0, behavior: 'auto'});
+  } else if(top < safeTop){
+    window.scrollBy({top: top - safeTop - 12, left: 0, behavior: 'auto'});
+  }
+}
+
+let keyboardBaselineHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+function syncKeyboardViewport(){
+  const vv = window.visualViewport;
+  if(!vv) return;
+  const active = document.activeElement;
+  const pickupInputActive = !!(active && active.classList && active.classList.contains('custom-time-input'));
+
+  // While no pickup field is focused, remember the normal viewport height.
+  // This works even on iOS versions where window.innerHeight shrinks together
+  // with visualViewport.height when the keyboard opens.
+  if(!pickupInputActive){
+    keyboardBaselineHeight = vv.height;
+    document.documentElement.style.setProperty('--keyboard-inset', '0px');
+    document.body.classList.remove('keyboard-open');
+    return;
+  }
+
+  const keyboardInset = Math.max(0, Math.round(keyboardBaselineHeight - vv.height));
+  const keyboardOpen = keyboardInset > 80;
+  document.documentElement.style.setProperty('--keyboard-inset', keyboardOpen ? keyboardInset + 'px' : '0px');
+  document.body.classList.toggle('keyboard-open', keyboardOpen);
+  requestAnimationFrame(()=>ensurePickupEditorVisible(active));
+}
+
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', syncKeyboardViewport);
+  window.visualViewport.addEventListener('scroll', syncKeyboardViewport);
+}
+window.addEventListener('orientationchange', ()=>setTimeout(syncKeyboardViewport, 250));
 let currentView = 'list'; // 'list' | 'detail' | 'settings'
 
 const MISSED_ORDER_MINUTES = 5;
@@ -997,12 +1059,14 @@ function renderDetailView(o){
       if(confirmBtn) confirmBtn.disabled = !valid;
     };
     inp.onfocus = ()=>{
-      // Wait for the on-screen keyboard to finish animating in, then make sure
-      // the ACCEPT button (not just the input) is still visible above it.
-      setTimeout(()=>{
-        const confirmBtn = el.querySelector(`.tk-btn.confirm[data-id="${inp.dataset.id}"]`);
-        if(confirmBtn) confirmBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }, 300);
+      // Re-check several times while the mobile keyboard animates. iOS may
+      // resize the visual viewport in stages, so a single scrollIntoView call
+      // can still leave the field hidden.
+      syncKeyboardViewport();
+      [60, 220, 420].forEach(delay=>setTimeout(()=>ensurePickupEditorVisible(inp), delay));
+    };
+    inp.onblur = ()=>{
+      setTimeout(syncKeyboardViewport, 120);
     };
   });
   el.querySelectorAll('[data-reject-id]').forEach(btn=>{
@@ -1029,7 +1093,11 @@ function renderDetailView(o){
       // from ending up hidden underneath the keyboard.
       setTimeout(()=>{
         const inp = document.querySelector('.custom-time-input[data-id="'+btn.dataset.id+'"]');
-        if(inp) inp.focus();
+        if(inp){
+          try{ inp.focus({preventScroll:true}); }catch(e){ inp.focus(); }
+          inp.scrollIntoView({block:'center', inline:'nearest', behavior:'auto'});
+          [80, 260, 460].forEach(delay=>setTimeout(()=>ensurePickupEditorVisible(inp), delay));
+        }
       }, 50);
     };
   });
