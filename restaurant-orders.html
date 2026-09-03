@@ -838,7 +838,12 @@ async function renderKitchen(isPoll){
   knownOrderIds = currentIds;
   firstLoad = false;
 
-  hasPendingOrders = list.some(o=>o.status==='pending' && !isOrderMissed(o));
+  // Ring only for pending orders that have not had their first Accept tap.
+  // Once staff starts choosing a pickup time, that order is acknowledged and
+  // must stay silent until the second Accept confirms it.
+  hasPendingOrders = list.some(o=>
+    o.status==='pending' && !isOrderMissed(o) && !showingTimeInputFor.has(o.id)
+  );
   if(!hasPendingOrders) stopAlarm();
 
   renderCurrentView(isPoll);
@@ -1086,6 +1091,13 @@ function renderDetailView(o){
   el.querySelectorAll('[data-act="showTimeInput"]').forEach(btn=>{
     btn.onclick = ()=>{
       showingTimeInputFor.add(btn.dataset.id);
+      // The first Accept acknowledges the order immediately. Stop both the
+      // audible alarm and vibration before opening the pickup-time step.
+      stopAlarm();
+      if(navigator.vibrate) navigator.vibrate(0);
+      hasPendingOrders = latestOrdersList.some(order=>
+        order.status==='pending' && !isOrderMissed(order) && !showingTimeInputFor.has(order.id)
+      );
       renderDetailView(o);
       // Give the input a moment to actually be in the DOM, then focus it —
       // most mobile keyboards will auto-scroll the focused field into view,
