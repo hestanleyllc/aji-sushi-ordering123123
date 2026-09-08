@@ -1,8 +1,37 @@
-# AJI SUSHI 在线点餐系统 — 项目说明文档
+# AJI SUSHI 在线点餐系统 — 项目交接文档
 
-**这份文档是干什么用的**：以后不管是开一个新的 Claude 对话、换一个开发者、还是你自己想回忆某个功能是怎么做的，把这份文档发给对方（或者贴给 Claude），就能很快搞清楚现在系统的完整状态，不用从头解释。
+**这份文档是干什么用的**：给接手这个项目的新对话窗口（或者新的开发者）快速了解现在系统的完整状态。开新对话的时候，把这份文档 + 相关代码文件一起发过去，就能快速接上进度，不用从头解释。
 
-最后更新时间：2026年7月（如果你之后继续改动系统，记得让 Claude 顺手更新这份文档）。
+最后更新时间：2026年8月。
+
+---
+
+## ⚠️ 零、当前正在处理、还没解决的问题（新窗口请先看这里）
+
+### 菜品图片上传功能，目前还在报错，没修好
+
+**背景**：最近加了"给每道菜上传照片"的功能（后台admin.html上传，顾客点餐页面显示缩略图+点击放大）。上传的图片存成独立文件放在持久化磁盘上（不是塞进data.json数据库里）。
+
+**出问题的过程**：
+1. 一开始做了个"自动压缩图片"的功能（用 `sharp` 这个工具包），上传后**全部失败**（9张全挂）
+2. 怀疑是 `sharp` 这个包在 Render 上装/跑的时候有问题，于是**回滚**，把压缩功能整个撤掉，恢复成"直接存原图，不压缩"的简单版本
+3. **回滚之后，上传还是失败**（这次只测了1张，也失败了）——说明问题**不是** `sharp` 造成的，是别的原因，具体是什么还不确定
+4. 最后一步：给上传接口加了详细的报错信息回显（之前只显示"失败"，现在会显示具体是哪一步、什么错误），但**还没有拿到用户实际测试后的报错内容**，所以还不知道根本原因是什么
+
+**下一步该做什么**：
+1. 先让用户在最新版本上重新测试一次上传（单张或批量都行）
+2. 这次应该会显示具体的错误信息（类似"Server could not save the photo: xxx"这种），把这段话拿到手
+3. 根据具体报错内容判断问题所在，可能的方向：
+   - 持久化磁盘的 `images` 子文件夹创建/写入权限有问题
+   - `IMAGES_DIR` 路径计算得不对
+   - `requireAdminAuth` 中间件在某些请求下的行为异常
+   - 请求体大小限制（虽然已经设了15mb，但要确认没有被别的中间件覆盖）
+   - 也有可能是完全想不到的别的原因，需要看到真实报错才能判断
+
+**这个功能涉及的代码位置**：
+- `server.js`：`app.post('/api/upload-dish-image', ...)`、`app.post('/api/remove-dish-image', ...)`、`IMAGES_DIR` 相关设置（在 `DATA_FILE` 定义附近）
+- `admin.html`：菜品行的照片缩略图/上传按钮、批量上传按钮（`batchUploadPhotosBtn`）
+- `customer-order.html`：菜品卡片里的缩略图显示、点击放大的 lightbox 弹窗
 
 ---
 
@@ -23,28 +52,21 @@
 
 ## 二、数据存储 —— ⚠️ 最重要的一节，改动前必读
 
-网站的**代码**和网站的**数据**（订单、菜单、顾客信息等）是完全分开的两件事：
+网站的**代码**和网站的**数据**（订单、菜单、顾客信息、菜品图片等）是完全分开的两件事：
 
-- **代码**：`server.js`、`*.html` 这些文件，存在 GitHub，每次你上传新文件就会更新。
-- **数据**：存在下面两种方式**之一**（当前用的是第一种）：
-
-### 当前用的：Render Persistent Disk（持久化磁盘）
-- 磁盘挂载路径（Mount Path）：`/var/data`
-- 对应的环境变量：`DATA_DIR=/var/data`
-- 这两个值**必须完全一致**，改动任何一个之前一定要三思
-- 费用：约 $0.25/月（1GB档位，实际用量远小于这个，不用担心超额）
-- **已经实测验证过**：改数据 → 手动触发 Render 重新部署 → 数据还在，证明这套配置是好的
-
-### 备选方案（当前没有用，仅供参考）：Upstash Redis
-- 如果哪天想换成这个，需要设置 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 这两个环境变量
-- **代码里的优先级是：只要检测到这两个变量存在，就会优先用 Upstash，完全忽略 Persistent Disk**——所以千万不要"顺手"把这两个变量也设置上，除非是真的打算切换存储方式，否则会导致"两套数据不同步"的混乱
+- **代码**：`server.js`、`*.html` 这些文件，存在 GitHub，每次上传新文件就会更新。
+- **数据**：存在 Render 的 **Persistent Disk（持久化磁盘）** 上
+  - 磁盘挂载路径（Mount Path）：`/var/data`
+  - 对应的环境变量：`DATA_DIR=/var/data`
+  - 这两个值**必须完全一致**，改动任何一个之前一定要三思
+  - 费用：约 $0.25/月（1GB档位）
+  - **已经实测验证过**：改数据 → 手动触发 Render 重新部署 → 数据还在，证明这套配置是好的
+- **菜品图片**：存在同一块磁盘的 `/var/data/images/` 子文件夹里，数据库（data.json）里只记图片的URL路径，不存图片本身
 
 ### ⚠️ 绝对不能碰的东西
-`server.js` 里有这几个内部常量/键名，**修改它们会导致系统突然"找不到"你现在存的所有真实数据**（不是丢失，是从系统的角度看好像换了个新数据库，一片空白）：
-- Upstash 那套逻辑里用来标记数据的 key 名字（如果以后启用 Upstash）
-- `SESSION_SECRET` 的默认值（如果之前一直没单独设置过环境变量）
-
-**原则：这些内部标识符只加不改。**
+- 不要随便加 `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` 这两个环境变量——只要检测到这两个存在，系统会**优先用 Upstash**、完全忽略 Persistent Disk，会导致"两套数据不同步"的混乱
+- `SESSION_SECRET` 的默认值不要改（如果之前一直没单独设置过环境变量的话）
+- **任何密钥/密码类的真实数值，绝对不能写进任何会上传到 GitHub 的文件里**（包括这份 README 本身）——之前就因为把 VAPID 私钥直接写进 README 导致 GitHub 密钥扫描报警、密钥作废重新生成。密钥只应该：直接填在 Render 的 Environment Variables 里，或者让 Claude 每次要用的时候临时生成/展示在聊天对话中（不写入文件）
 
 ---
 
@@ -56,119 +78,87 @@
 | `ADMIN_USER` / `ADMIN_PASSWORD` | admin.html 后台登录账号密码 |
 | `DATA_DIR` | 设为 `/var/data`，对应 Persistent Disk 的挂载路径 |
 
-厨房看板（restaurant-orders.html）的登录账号密码不是环境变量，是在 admin 后台的 "Credentials" 区块里单独设置的（`kitchenUser`/`kitchenPassword`），跟 admin 账号可以不一样。
+厨房看板（restaurant-orders.html）的登录账号密码不是环境变量，是在 admin 后台的 "Login Credentials" 区块里单独设置的（`kitchenUser`/`kitchenPassword`），跟 admin 账号可以不一样。
 
 ### 可选功能对应的环境变量
 
 | 功能 | 需要的环境变量 | 说明 |
 |---|---|---|
-| 新订单邮件提醒 | `EMAIL_USER`、`EMAIL_PASS` | Gmail 账号 + App Password（不是普通登录密码） |
-| PrintNode 云打印（可能已弃用，见下方"打印"一节） | `PRINTNODE_API_KEY`、`PRINTNODE_PRINTER_ID` | 如果已经改用免费的 Epson 直连打印，这个可以考虑不要了，省 $9-10/月 |
+| 新订单邮件提醒 / 每月数据备份邮件 | `EMAIL_USER`、`EMAIL_PASS` | Gmail 账号 + App Password（不是普通登录密码） |
+| PrintNode 云打印（可能已弃用） | `PRINTNODE_API_KEY`、`PRINTNODE_PRINTER_ID` | 已有免费的 Epson 直连打印方案，建议确认是否还需要这个，不需要可以取消订阅省钱 |
 | 免费打印桥（本地脚本轮询） | `PRINT_BRIDGE_SECRET` | 配合本地 `print-bridge.js` 脚本使用 |
-| 在线支付（Stripe） | `STRIPE_SECRET_KEY` | 没设置的话，顾客只能选"到店付款"，没有在线支付选项，不影响其他功能 |
-| 电话提醒（订单没确认自动打电话） | `TWILIO_ACCOUNT_SID`、`TWILIO_AUTH_TOKEN`、`TWILIO_FROM_NUMBER` | 需要在 admin 后台 Site Info 里开启并填写要打给谁的号码 |
-| 系统推送通知（新订单像手机消息一样弹出提醒） | `VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT`（可选） | 需要单独生成，见下方"推送通知"一节，密钥不能写进任何会上传的文件 |
+| 在线支付（Stripe） | `STRIPE_SECRET_KEY` | 没设置的话，顾客只能选"到店付款" |
+| 电话提醒 + 短信通知（Twilio） | `TWILIO_ACCOUNT_SID`、`TWILIO_AUTH_TOKEN`、`TWILIO_FROM_NUMBER` | 电话提醒是打给餐厅的（订单没确认自动打电话）；短信通知是发给顾客的（订单确认后自动发短信），两个功能共用这一组账号 |
+| 系统推送通知（新订单像手机消息一样弹出提醒） | `VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT`（可选） | 需要单独生成，密钥不能填进任何文件里 |
+| POS 系统同步 | `POS_SYNC_SECRET` | 自己定一串密钥（20位左右字母数字混合），两边（Render环境变量 + POS后台设置）必须填一模一样的值 |
 
 ---
 
 ## 四、各个页面的功能现状
 
 ### customer-order.html（顾客点餐页）
-- 白底黑粉橙配色，菜品按分类展示，分类导航栏可横向滑动
-- 菜品点击弹出详情弹窗：数量、备注、可选项（选项支持加价，见下方）
-- 购物车是**居中弹窗样式**（不是铺满全屏的抽屉），每道菜价格/数量加减/删除在同一行显示，节省空间
+- 白底黑粉橙配色，菜品按分类展示，分类导航栏可横向滑动（带滚动条）
+- 菜品卡片：如果上传了照片，菜名旁边显示小缩略图（懒加载），**点击缩略图弹出居中大图**
+- 菜品点击弹出详情弹窗：数量、备注、可选项（选项支持加价，多选类型的选项支持重复选同一个）
+- 顶部有"预计取餐时间 15-20分钟"的提示条，店铺关门时自动隐藏
+- 购物车是居中弹窗样式，每道菜价格/数量加减/删除在同一行显示
 - 手机号、邮箱**必填**才能下单
+- **老顾客一键再来一单**：下单成功后记在这台设备的浏览器里，下次访问会有"欢迎回来，要不要再来一单"的提示
+- **下单后的确认弹窗，在餐厅确认取餐时间之前无法关闭**（背景点击、logo点击都被拦下来了）；**超过3分钟还没确认，会提示"餐厅繁忙，请拨打电话XXX"**；如果订单被员工拒绝，会立刻显示"抱歉无法接单，请致电"
+- 订单确认后，确认弹窗底部会出现"给我们留个Google评价"的链接（需要在后台设置 Google Review Link）
+- **顾客端中英文切换**：点导航菜单里的"🌐 中文/English"，翻译的是网站界面文字（按钮、标签），**不包括菜品名称和描述**（那些还是后台录入时的语言）
 - 页脚有 "Powered by H.E Stanley" 字样
-- 支持在线支付（Stripe，如果配置了的话）或到店付款
 
-### restaurant-orders.html（接单看板）—— 这个页面改动最频繁，架构说明：
+### restaurant-orders.html（接单看板）
 底部两个标签页切换：**Orders（订单）** / **Settings（设置）**
 
 **Orders 主页**：
 - 上半部分 "New Orders"（待确认），下半部分 "History"（已确认），都只显示顾客名字+金额
-- 点名字打开详情页；只有从详情页点左上角"←"，或者**从屏幕左边缘往右滑**，才能返回主页
-- 详情页现在是"去卡片化"的真满屏样式（无边框无圆角，贴边到底），字体和按钮都比一般网页大，方便厨房环境快速看清楚
-- 待确认订单的确认方式：一个手动输入"几分钟后取餐"的数字框（不是选具体时间点，也不是系统的时间选择器），输入合法数字后 Accept 按钮立即变绿可点
-- 菜品清单前后有红色分隔线标出"顾客点的菜从哪开始到哪结束"，颜色可以在 Settings → Appearance 里自定义
-- 新订单响铃：**会一直响，响到你确认/拒绝这单为止**，不会自动停；用的是"背景持续循环播放，靠真正的播放/暂停开关控制"这套机制（因为 iOS 上没法用代码控制音量，之前踩过坑）
+- 电话号码统一格式化显示成 `646-397-9159` 这种带横杠的样式
+- 点名字打开详情页；只有点左上角"←"或者从屏幕左边缘往右滑，才能返回主页
+- **待确认订单是两步流程**：先只显示"✕拒绝"和"Accept接受"两个按钮；点了"Accept"才会弹出取餐时间的数字输入框（填"几分钟后"）和真正的ACCEPT确认按钮；输入的时候会自动把确认按钮滚动到键盘上方，不会被遮住
+- 超过5分钟没确认的订单，自动标红显示"MISSED ORDER"，并且不再持续触发响铃（不管是正常等待中变成超时，还是断网重连后突然发现的旧订单，都按订单的真实下单时间判断，不会有遗漏或者误判）
+- 已确认的订单，如果开启了POS同步，会显示"📤 Sync to POS"按钮
+- 新订单响铃：会一直响到确认/拒绝为止，用的是系统循环播放+真正播放/暂停开关（不是调节音量，因为iOS不支持代码控制音量）
 
 **Settings 设置页**：
 - End of Day Report（今日订单数/营业额/已确认/待处理）
-- Notifications（推送通知开关，见下方专门一节）
+- App Install（跨浏览器通用的"添加到主屏幕"引导，会根据浏览器类型给出对应的操作说明）
+- Notifications（推送通知开关）
 - Sound（Test Alarm / Sound On 按钮的显示开关，默认隐藏）
-- Printing（自动打印开关 + Printer Stations 增删改，含默认打印机IP设置）
+- Printing（自动打印开关 + Printer Stations 增删改）
 - Menu Items — Sold Out（可展开/收起的菜品售罄快捷开关列表）
 - Language（占位，未实现功能）
-- Appearance（详情页红色分隔线颜色自定义，存在本地 localStorage）
+- Appearance（详情页红色分隔线颜色自定义）
+- Data Backup 相关内容在 admin.html 里，不在这个页面
 
 ### admin.html（后台管理）
-- 菜单管理改成了**侧边栏（左）+ 内容区（右）**的布局，不再是一长条竖着排的所有分类
+- 菜单管理是侧边栏（左）+ 内容区（右）的布局
 - 支持批量勾选多道菜品，一次性拖到另一个分类
-- 每道菜的选项组（optionGroups）现在支持给单个选项加价：在选项文本框里写 `选项名 +2.50` 即可，不写价格默认为 $0（详见下方"选项加价"一节）
-- Site Info 里可以设置：营业时间、税率、打印机IP、电话提醒开关和号码、打印开关等
+- 每道菜的选项组支持给单个选项加价（文本框里写"选项名 +2.50"）
+- **每道菜可以上传照片**（目前有bug，见文档最上面第零节）；也支持**批量上传**，靠"文件名跟菜名完全一致"来自动配对（比如照片叫 `Alaska Roll.jpg`，会自动配到菜单里叫"Alaska Roll"的那道菜）
+- Site Info 里可以设置：营业时间（含"特殊日期例外"，比如某天临时关门/调整营业时间，优先级高于每周固定时间表）、税率、打印机IP、电话提醒开关和号码、打印开关、Google评论链接
+- Data Backup 区块：能立即下载一份当前完整数据的JSON备份；另外系统每个月会自动发一封备份邮件到通知邮箱
 
 ---
 
 ## 五、几个专门功能的实现细节
 
-### 0.5 API 接口完整清单（对接 POS 系统时最需要参考的部分）
+### 0. 核心数据结构参考
 
-以下是所有的接口地址。带 🔒 的表示需要登录（厨房账号或管理员账号）才能调用，没有标记的是公开接口。
-
-**顾客点餐相关：**
-| 方法 | 地址 | 作用 |
-|---|---|---|
-| GET | `/api/config` | 获取菜单、店铺信息、营业时间等公开配置 |
-| GET | `/api/store-status` | 查询店铺现在是否营业中 |
-| POST | `/api/orders` | 顾客提交新订单（**这是POS对接最需要关注的接口** —— 订单一提交，这里就是数据源头） |
-| POST | `/api/checkout` | 发起 Stripe 在线支付 |
-| GET | `/api/checkout/verify` | 验证支付是否成功 |
-
-**接单/厨房相关：** 🔒需要厨房账号
-| 方法 | 地址 | 作用 |
-|---|---|---|
-| GET | `/api/orders` | 获取所有订单列表 |
-| GET | `/api/orders/:id` | 获取单个订单详情（公开，顾客确认页也用这个） |
-| PATCH | `/api/orders/:id` | 更新订单状态（比如确认取餐时间，把 pending 改成 confirmed） |
-| DELETE | `/api/orders/:id` | 删除/拒绝订单 |
-| GET | `/api/events` | SSE 实时推送，新订单一来就主动推给前端，不用等轮询 |
-
-**管理后台相关：** 🔒需要管理员账号
-| 方法 | 地址 | 作用 |
-|---|---|---|
-| POST | `/api/config` | 保存菜单、店铺设置等 |
-| POST | `/api/credentials` | 修改后台/厨房登录账号密码 |
-| POST | `/api/import-menu-photo` | 用AI从菜单照片提取菜品信息 |
-
-**其他辅助功能：**
-| 方法 | 地址 | 作用 |
-|---|---|---|
-| POST | `/api/kitchen-settings` 🔒 | 打印开关、默认打印机IP |
-| POST | `/api/kitchen-print-stations` 🔒 | 增删打印站点 |
-| POST | `/api/menu-soldout` 🔒 | 快捷标记菜品售罄 |
-| GET/POST | `/api/push-*` 🔒 | 推送通知订阅相关 |
-| GET/POST | `/api/print-queue*` | 免费打印桥（print-bridge.js）轮询取打印任务用 |
-
-**对接POS时最关键的两个点：**
-1. **`POST /api/orders`** 是唯一的"新订单入口"——不管顾客怎么下单，最终都是这个接口在创建订单记录。如果要做自动同步，最直接的思路是：监听这个接口被调用（或者监听 `/api/events` 的 SSE 推送），拿到订单数据后，转换成POS系统能识别的格式，再想办法录入POS
-2. **订单数据结构**（完整字段见上面"核心数据结构参考"部分）——`items`数组里每个菜品带 `name`、`qty`、`price`、`options`（顾客选的配料），这些就是POS录单需要的全部信息
-
-### 0.6 关键业务逻辑速查
-
-### 0. 核心数据结构参考（新对话最容易漏看的部分）
-
-**订单对象（order）**大概长这样：
+**订单对象（order）**：
 ```
 {
-  id, num,                          // num是显示给顾客/员工看的订单号
-  items: [{ dishId, name, price, qty, note, options: {选项组标题: 选中的值或数组}, printRouting }],
+  id, num,
+  items: [{ dishId, name, price, qty, note, options: {选项组标题: 选中的值或数组}, category, printRouting }],
   subtotal, tax, total,
   name, phone, email, location, deliveryAddress,
-  status: 'pending' | 'confirmed',  // 只有这两种状态
-  pickupTime, pickupTimestamp,      // 确认时才会填
+  status: 'pending' | 'confirmed',
+  pickupTime, pickupTimestamp,
   createdAt, paid, paymentMethod,
-  isNewCustomer,                    // 首次下单标记
-  lastCallAt, callCount             // 电话提醒功能用
+  isNewCustomer,
+  lastCallAt, callCount,           // 电话提醒功能用
+  posSynced, posSyncRequested      // POS同步功能用
 }
 ```
 
@@ -176,95 +166,115 @@
 ```
 {
   id, name, desc, price, soldOut, hot,
+  image,                           // 图片URL路径，比如 /images/dishId.jpg?v=时间戳
   optionGroups: [{ id, label, type: 'single'|'multi', count, choices: [...] }],
   printRouting: [{ station, label }]
 }
 ```
-`choices` 数组里每一项可以是**纯字符串**（老格式，无加价）或者 **`{name, price}` 对象**（新格式，price是选中后要加的钱）。读取的时候两种格式都要兼容处理（三个文件里都有 `choiceName()`/`choicePrice()` 这两个兼容函数）。
+`choices` 数组里每一项可以是纯字符串（老格式，无加价）或者 `{name, price}` 对象（新格式）。
 
-**订单超过48小时会被自动清理**（`data.orders` 里有清理逻辑），`data.knownCustomers`（用来判断新老顾客）不受这个清理影响，会一直保留。
+**订单超过48小时会被自动清理**，`data.knownCustomers`（判断新老顾客用）不受清理影响。
 
-### 1. 打印
-两套并行的打印方案：
-- **直连打印（推荐，免费）**：厨房平板通过局域网直接把小票发给 Epson 打印机，用的是 Epson ePOS-Print 协议。IP 在 admin 后台或接单页 Settings 里设置。
-- **PrintNode（付费）**：如果还在用，是走云端转发，每月固定费用。如果已经全面切换到直连打印，建议去 PrintNode 官网取消订阅省钱。
+### 0.5 API 接口完整清单
 
-### 2. 选项组加价
-菜单里的"选项组"（比如"Choose 2 Rolls"这种）现在选项可以带价格：
-- 数据格式：`choices` 数组里每一项可以是纯字符串（老格式，价格默认0，向下兼容）或者 `{name, price}` 对象（新格式）
-- admin 后台编辑时用文本框，格式是"选项名 +价格"，比如：
-  ```
-  Miso Soup
-  Salad
-  Beef +2.50
-  ```
-- 顾客点餐页选中带价格的选项后，价格会实时体现在弹窗和购物车里
-- **多选类型的选项组**（`type: 'multi'`，比如"Any 2/3 Rolls"这种"选N个"的）支持**重复选同一个选项**——界面是每个选项旁边一个独立的加减号(+/-)，不是打勾checkbox，顾客可以对同一个选项连续点"+"选好几次（比如3个都选"California Roll"），选够组里要求的总数(`count`)之后其他未选满的"+"按钮会自动变灰。数据层面上，`modalSelections`数组允许同一个选项名字出现多次
-- **注意**：服务器不会重新校验价格是否正确（一直是这样，不是这次新加的问题），完全信任顾客浏览器提交的金额。真出问题的话（比如有人改数据包），这是个已知的、贯穿整个系统的潜在风险，如果以后想收紧安全性，这是要单独处理的一块。
-
-### 3. 电话提醒（Twilio）
-订单超过设定时间（默认5分钟）没确认，自动打电话到指定号码提醒，每5分钟重打一次直到确认。需要 Twilio 账号（付费，但很便宜）。
-
-### 4. 系统推送通知（Web Push / PWA）
-新订单可以像手机短信/App消息一样直接弹通知，不需要网页开着。
-
-**密钥不写在这份文档里**——密钥这类东西不应该出现在任何会被上传到 GitHub 的文件里（之前犯过这个错误，导致 GitHub 密钥扫描报警，已经作废重新生成）。密钥只应该：
-1. 直接在 Render 后台的 Environment Variables 页面里填写
-2. 或者存在你自己电脑上一个**不会上传**的本地文件里（比如加进 `.gitignore` 排除的 `.env`）
-
-如果需要重新生成一组新密钥，让 Claude 用 Node.js 的内置 `crypto` 模块生成 EC P-256 密钥对再转换成 VAPID 需要的格式即可，不需要联网也能生成。
-
-**新增的3个静态文件**（必须和其他文件一起在同一目录）：`kitchen-manifest.json`、`kitchen-sw.js`、`kitchen-icon.png`
-
-**员工怎么开启**：
-1. iPhone 用 **Safari**（不是Chrome）打开接单网址 → 分享 → 添加到主屏幕
-2. 从桌面新图标打开（不是从浏览器标签页）
-3. 接单页 Settings → Notifications → 点 "Enable"，同意系统通知权限
-
-安卓不强制要求添加到主屏幕，直接在浏览器里开启即可。
-
-**注意**：这个功能背后的推送发送逻辑，因为开发环境没法联网做端到端测试，理论上应该没问题，但**没有做过完整的真机验证**，如果发现推送没收到，需要进一步排查（比如检查 Render 日志里 `web-push` 有没有报错）。
-
-### 5. 打印机 vs POS 系统（MenuSifu）
-这套点餐系统跟店里用的 MenuSifu POS 之间**没有官方API可以直接对接**（MenuSifu 不对外开放开发者接口）。目前实际在推进的方案是：
-
-**正在做的（另一个独立项目，跟这套网站代码是分开的）**：用 Claude Code + OpenClaw 做**桌面自动化**，把这个网站收到的新订单，模拟人工操作的方式自动录入到 MenuSifu 那台 Windows 电脑的桌面客户端软件里。这个项目单独存放在一个叫 `pos-windows` 的文件夹里，是从零开发的自动化脚本项目，跟这套点餐网站的代码**没有直接关联**，两个是分开维护的独立项目。如果需要衔接这两边（比如让网站在有新订单时通知那个自动化脚本），关键的对接点是本文档"API 接口完整清单"里提到的 `POST /api/orders`（新订单入口）和 `GET /api/events`（SSE 实时推送）这两个接口。
-
-**其他备选方案**（评估过但目前没有采用）：
-- 联系 MenuSifu 官方问有没有定制对接方案
-- 花钱订阅 Deliverect / ItsaCheckmate 这类中间商平台（前提是它们真的支持接入自定义网站，需要先问清楚）
-- 网站直接开通在线支付（Stripe，已有基础），绕开"要不要同步进POS收银"这个问题
-- 从零做一套完整替代 POS（工程量巨大，涉及刷卡合规，建议走 Stripe Terminal 这类官方认证方案，不要自己处理银行卡数据）
-
----
-
-## 六、当前费用情况（截至最近一次核对）
-
-| 服务 | 大概费用 | 状态 |
+**顾客点餐相关：**
+| 方法 | 地址 | 作用 |
 |---|---|---|
-| Render 网站托管 | 约 $7/月起 | 在用，具体以 Render 账单为准 |
-| Render Persistent Disk | 约 $0.25/月 | 在用，已验证数据持久化正常 |
-| 域名 ajibrewster.com | 约$10-15/**年** | 在用 |
-| PrintNode | 约 $9-10/月 | **待确认是否还需要**，已有免费直连打印替代方案 |
-| Twilio（电话提醒） | 号码租金约$1.15/月 + 通话按分钟 | 只有开启电话提醒功能才会产生费用 |
-| Upstash / Stripe / Gmail / Web Push | 免费或按实际使用量 | — |
+| GET | `/api/config` | 获取菜单、店铺信息等公开配置 |
+| GET | `/api/store-status` | 查询店铺现在是否营业中 |
+| POST | `/api/orders` | 顾客提交新订单（服务器会重新校验价格，不信任浏览器提交的数字） |
+| POST | `/api/checkout` | 发起 Stripe 在线支付（同样会重新校验价格） |
+| GET | `/api/checkout/verify` | 验证支付是否成功 |
+
+**接单/厨房相关：** 🔒需要厨房账号
+| 方法 | 地址 | 作用 |
+|---|---|---|
+| GET | `/api/orders` | 获取所有订单列表 |
+| GET | `/api/orders/:id` | 获取单个订单详情（公开，顾客确认页也用这个） |
+| PATCH | `/api/orders/:id` | 更新订单状态（确认取餐时间、标记POS同步请求等） |
+| DELETE | `/api/orders/:id` | 删除/拒绝订单 |
+| GET | `/api/events` | SSE 实时推送 |
+
+**管理后台相关：** 🔒需要管理员账号
+| 方法 | 地址 | 作用 |
+|---|---|---|
+| POST | `/api/config` | 保存菜单、店铺设置等 |
+| POST | `/api/credentials` | 修改后台/厨房登录账号密码 |
+| POST | `/api/upload-dish-image` | 上传菜品照片（**目前有bug**） |
+| POST | `/api/remove-dish-image` | 删除菜品照片 |
+| GET | `/api/backup` | 立即下载完整数据备份 |
+
+**POS同步相关：** 🔒需要 `POS_SYNC_SECRET` 密钥（不是员工登录）
+| 方法 | 地址 | 作用 |
+|---|---|---|
+| GET | `/api/pos-sync/orders?secret=xxx` | POS拉取已确认、还没同步过的订单 |
+| POST | `/api/pos-sync/orders/:id/ack?secret=xxx` | POS确认已处理完这笔订单 |
+
+**其他辅助功能：**
+| 方法 | 地址 | 作用 |
+|---|---|---|
+| POST | `/api/kitchen-settings` 🔒厨房 | 打印开关、默认打印机IP |
+| POST | `/api/kitchen-print-stations` 🔒厨房 | 增删打印站点 |
+| POST | `/api/menu-soldout` 🔒厨房 | 快捷标记菜品售罄 |
+| GET/POST | `/api/push-*` 🔒厨房 | 推送通知订阅相关 |
+| GET/POST | `/api/print-queue*` | 免费打印桥轮询用 |
+
+### 1. 价格安全校验（重要）
+`server.js` 里有个 `computeAuthoritativePricing()` 函数，**所有订单的价格都会用后台真实菜单数据重新计算**，不信任顾客浏览器提交的数字。这个函数：
+- 优先按 `dishId` 精确匹配菜品（顾客下单时浏览器会带上这个字段）
+- 如果ID对不上，会按**菜名**兜底查找（优先在提交时标注的分类里找，减少重名菜品匹配错误的概率）
+- Stripe在线支付和到店付款**两条路径都会走这个校验**，确保顾客实际付的钱和后台记录的订单金额一致
+
+**这块历史上出过好几次bug**（税率读取失败变成0、菜品ID没有实际传给服务器导致校验形同虚设、Stripe路径最初没有走校验），都已经修复，但如果以后改动这块代码，务必谨慎测试。
+
+### 2. 打印
+两套并行方案：直连打印（Epson ePOS-Print协议，免费）和 PrintNode（付费，可能已不需要）。
+
+### 3. 选项组加价 + 可重复选择
+后台文本框格式："选项名 +价格"。多选类型（"Any 2/3 Rolls"这种）支持**重复选同一个选项**，界面是每个选项旁边独立的加减号，不是打勾checkbox。
+
+### 4. 电话提醒（Twilio，打给餐厅） + 短信通知（Twilio，发给顾客）
+共用同一组 Twilio 账号。短信发送前会把顾客手打的各种电话号码格式，自动转换成 Twilio 要求的标准格式（`+1XXXXXXXXXX`），格式实在无法识别的会跳过发送而不是报错。
+
+### 5. 系统推送通知（Web Push / PWA）
+新订单可以像系统消息一样直接弹通知。密钥生成方式见上面"绝对不能碰的东西"一节。3个静态文件（`kitchen-manifest.json`、`kitchen-sw.js`、`kitchen-icon.png`）必须跟其他文件放在同一目录。iPhone必须用Safari"添加到主屏幕"后才能开启通知；接单页 Settings 里的"App Install"按钮能自动判断当前浏览器、给出对应操作指引。
+
+### 6. POS 系统同步
+跟餐厅现在用的 MenuSifu POS 没有官方API对接（MenuSifu不对外开放开发者接口）。目前用的方案是：POS 每隔一段时间主动来问网站"有没有新确认的订单"（走 `/api/pos-sync/orders`），拿到后自动导入。员工在接单页确认订单后，需要（或者POS设置成自动模式的话不需要）额外点一下"📤 Sync to POS"按钮，才会把订单标记为"可以给POS拿"。
+
+**另外还有一个完全独立的项目**：用户在**另一个 Claude Code 项目**（存在他电脑上 `pos-windows` 文件夹里）用 OpenClaw 做桌面自动化，把网站订单模拟人工操作的方式录入 MenuSifu 桌面客户端。这个跟上面的POS同步API是两套不同的方案，都在推进，不要搞混。
+
+### 7. 菜品图片（**当前有bug，见文档最上面**）
+存储方式：真实文件存在持久化磁盘的 `/var/data/images/` 文件夹，数据库里只存URL。支持单张上传和**批量上传**（按文件名自动匹配菜名，配不上的会列出来提示手动处理）。之前尝试加"服务器自动压缩"功能（用`sharp`库）导致上传全部失败，已回滚。回滚后上传仍然失败，原因未知，正在诊断中。
+
+### 8. 数据备份
+每月自动发一封邮件（附件是完整数据JSON）到后台设置的通知邮箱；另外 admin 后台有"Download Backup Now"按钮可以随时手动下载。
 
 ---
 
-## 六点五、近期更新记录（按时间倒序）
+## 六、当前费用情况
 
-- **SEO**：`server.js` 的 `injectSeo()` 加了 Schema.org Restaurant 结构化数据（店名、电话、地址、菜单链接），帮助 Google 展示富媒体搜索结果。后台的 Page Title / Meta Description 建议填上具体城市名，对本地搜索排名帮助更大
-- **重要的稳定性修复**：`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` 如果格式不对（比如两个值粘反了），之前会导致**整个网站直接崩溃打不开**；现在改成只是"关闭推送通知这一个功能"，不会影响其他功能正常运行。**这两个环境变量千万不要填反**——PUBLIC那个是长的那串，PRIVATE是短的那串
-- **接单页面**：订单整体备注（不是单个菜品的备注）现在显示在两条红色分隔线**里面**，跟菜品列表放一起，不再单独跑到税费信息那一块
-- **顾客点餐页**：多选类型的选项组（"Any 2/3 Rolls"这种）改成每个选项独立的加减号，支持重复选同一个选项，不再是"选一次就不能再选"的checkbox模式
+| 项目 | 大概费用 |
+|---|---|
+| Render 网站托管 | 约 $7/月起 |
+| Render Persistent Disk | 约 $0.25/月 |
+| 域名 ajibrewster.com | 约$10-15/年 |
+| PrintNode（待确认是否还需要） | 约 $9-10/月 |
+| Twilio（电话提醒+短信通知） | 号码租金约$1.15/月 + 通话/短信按量 |
+| Upstash / Stripe / Gmail / Web Push | 免费或按实际使用量，Upstash目前没有启用 |
 
-## 七、如果要开一个新的对话继续开发
+---
 
-把这份 README 贴给 Claude，再补充一句你现在具体想改什么。如果涉及到看现有代码的具体实现，把对应的文件也一起上传（`server.js`、三个 `.html` 文件），因为 Claude 不会自动记得之前对话里的代码细节。
+## 七、给新对话/新开发者接手的重要提醒
 
-**几个容易踩的坑，新对话也要提醒 Claude 注意：**
-1. 不要随便改 `DATA_DIR`、Persistent Disk 挂载路径，或者贸然加上 Upstash 的环境变量（除非明确要切换存储方式）
-2. iOS Safari/Chrome 上无法用 JS 控制 `<audio>` 的音量（`.volume` 不生效），控制声音只能用真正的播放/暂停
+1. 不要随便改 `DATA_DIR`、Persistent Disk 挂载路径，或者贸然加上 Upstash 的环境变量
+2. iOS Safari/Chrome 上无法用 JS 控制 `<audio>` 的音量，控制声音只能用真正的播放/暂停
 3. 部署后如果发现"改动没生效"，先怀疑是不是 Render 没有真正重新部署 / 浏览器缓存问题，而不是代码错了
-4. 菜单选项组的 `choices` 字段现在支持字符串或 `{name, price}` 对象两种格式，改动相关代码时两种都要兼容
-5. **任何密钥/密码类的真实数值，绝对不能写进任何会上传到 GitHub 的文件里**（包括这份 README 本身）——之前就因为把 VAPID 私钥直接写进 README 导致 GitHub 密钥扫描报警、密钥作废重生成。密钥只应该：直接填在 Render 的 Environment Variables 里，或者让 Claude 每次要用的时候临时生成/展示在聊天对话中（不写入文件）
+4. 菜单选项组的 `choices` 字段支持字符串或 `{name, price}` 对象两种格式，改动相关代码时两种都要兼容
+5. **任何密钥/密码类的真实数值，绝对不能写进任何会上传到 GitHub 的文件里**（包括这份 README 本身）
+6. 每次改完关键功能（尤其是价格计算、支付相关代码），**务必要求实际测试后再确认完成**，这个项目历史上有过好几次"看起来改好了、实际上线后才发现新bug"的情况（比如价格校验、税率计算、图片上传都出过这种问题），改完不能想当然，要看真实的测试结果或者报错信息
+7. 目前进行中、还没解决的问题见文档最上面"零、当前正在处理的问题"这一节
+
+
+### Kitchen live-update bandwidth optimization
+The kitchen board uses SSE as the primary real-time channel. While SSE is connected there is no periodic order polling. If SSE disconnects, a 3-second fallback poll starts automatically and stops immediately when SSE reconnects.

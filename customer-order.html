@@ -3783,7 +3783,8 @@ async function handleReturnFromPayment(){
 
 loadConfig(false).then(()=>handleReturnFromPayment());
 loadStoreStatus();
-setInterval(()=>loadConfig(true), 20000);
+// Menu/config changes do not need 20-second polling; one minute cuts unnecessary bandwidth.
+setInterval(()=>loadConfig(true), 60000);
 setInterval(loadStoreStatus, 60000);
 </script>
 </body>

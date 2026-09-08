@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AJI SUSHI · Incoming Orders</title>
 <link rel="manifest" href="/kitchen-manifest.json">
 <meta name="theme-color" content="#1C1C1E">
@@ -149,13 +149,6 @@
   .custom-time-row input[type="text"]{
     flex:1;padding:14px;border-radius:10px;border:1.5px solid var(--line);font-family:'Inter',sans-serif;
     font-size:17px;font-weight:700;text-align:center;
-    scroll-margin-top:90px;scroll-margin-bottom:220px;
-  }
-  /* Mobile Safari/PWA: reserve real space for the software keyboard so the
-     pickup-time field cannot end up underneath it. --keyboard-inset is kept
-     in sync with window.visualViewport by JavaScript below. */
-  body.keyboard-open .detail-body{
-    padding-bottom:calc(180px + var(--keyboard-inset, 0px));
   }
   .minutes-suffix{font-size:15px;font-weight:700;color:var(--stone);flex:none;}
   .ticket-actions{display:flex;gap:8px;}
@@ -287,61 +280,6 @@ let firstLoad = true;
 let audioUnlocked = false;
 let pendingSelections = {}; // orderId -> {offsetMinutes, customTime}
 let showingTimeInputFor = new Set(); // orderIds where "Accept" was tapped, revealing the time input step
-
-// Keep the pickup-time editor above the iOS/Android on-screen keyboard.
-// visualViewport reflects the actually visible part of the page while a
-// software keyboard is open; window.innerHeight alone is unreliable in
-// Safari and installed PWAs.
-function ensurePickupEditorVisible(inp){
-  if(!inp || document.activeElement !== inp) return;
-  const vv = window.visualViewport;
-  const viewportTop = vv ? vv.offsetTop : 0;
-  const viewportHeight = vv ? vv.height : window.innerHeight;
-  const safeTop = viewportTop + 78;
-  const safeBottom = viewportTop + viewportHeight - 22;
-  const row = inp.closest('.custom-time-row') || inp;
-  const actions = row.nextElementSibling && row.nextElementSibling.classList.contains('ticket-actions')
-    ? row.nextElementSibling : null;
-  const top = row.getBoundingClientRect().top;
-  const bottom = (actions || row).getBoundingClientRect().bottom;
-
-  if(bottom > safeBottom){
-    window.scrollBy({top: bottom - safeBottom + 18, left: 0, behavior: 'auto'});
-  } else if(top < safeTop){
-    window.scrollBy({top: top - safeTop - 12, left: 0, behavior: 'auto'});
-  }
-}
-
-let keyboardBaselineHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-
-function syncKeyboardViewport(){
-  const vv = window.visualViewport;
-  if(!vv) return;
-  const active = document.activeElement;
-  const pickupInputActive = !!(active && active.classList && active.classList.contains('custom-time-input'));
-
-  // While no pickup field is focused, remember the normal viewport height.
-  // This works even on iOS versions where window.innerHeight shrinks together
-  // with visualViewport.height when the keyboard opens.
-  if(!pickupInputActive){
-    keyboardBaselineHeight = vv.height;
-    document.documentElement.style.setProperty('--keyboard-inset', '0px');
-    document.body.classList.remove('keyboard-open');
-    return;
-  }
-
-  const keyboardInset = Math.max(0, Math.round(keyboardBaselineHeight - vv.height));
-  const keyboardOpen = keyboardInset > 80;
-  document.documentElement.style.setProperty('--keyboard-inset', keyboardOpen ? keyboardInset + 'px' : '0px');
-  document.body.classList.toggle('keyboard-open', keyboardOpen);
-  requestAnimationFrame(()=>ensurePickupEditorVisible(active));
-}
-
-if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', syncKeyboardViewport);
-  window.visualViewport.addEventListener('scroll', syncKeyboardViewport);
-}
-window.addEventListener('orientationchange', ()=>setTimeout(syncKeyboardViewport, 250));
 let currentView = 'list'; // 'list' | 'detail' | 'settings'
 
 const MISSED_ORDER_MINUTES = 5;
@@ -838,12 +776,7 @@ async function renderKitchen(isPoll){
   knownOrderIds = currentIds;
   firstLoad = false;
 
-  // Ring only for pending orders that have not had their first Accept tap.
-  // Once staff starts choosing a pickup time, that order is acknowledged and
-  // must stay silent until the second Accept confirms it.
-  hasPendingOrders = list.some(o=>
-    o.status==='pending' && !isOrderMissed(o) && !showingTimeInputFor.has(o.id)
-  );
+  hasPendingOrders = list.some(o=>o.status==='pending' && !isOrderMissed(o));
   if(!hasPendingOrders) stopAlarm();
 
   renderCurrentView(isPoll);
@@ -1064,14 +997,12 @@ function renderDetailView(o){
       if(confirmBtn) confirmBtn.disabled = !valid;
     };
     inp.onfocus = ()=>{
-      // Re-check several times while the mobile keyboard animates. iOS may
-      // resize the visual viewport in stages, so a single scrollIntoView call
-      // can still leave the field hidden.
-      syncKeyboardViewport();
-      [60, 220, 420].forEach(delay=>setTimeout(()=>ensurePickupEditorVisible(inp), delay));
-    };
-    inp.onblur = ()=>{
-      setTimeout(syncKeyboardViewport, 120);
+      // Wait for the on-screen keyboard to finish animating in, then make sure
+      // the ACCEPT button (not just the input) is still visible above it.
+      setTimeout(()=>{
+        const confirmBtn = el.querySelector(`.tk-btn.confirm[data-id="${inp.dataset.id}"]`);
+        if(confirmBtn) confirmBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 300);
     };
   });
   el.querySelectorAll('[data-reject-id]').forEach(btn=>{
@@ -1091,13 +1022,6 @@ function renderDetailView(o){
   el.querySelectorAll('[data-act="showTimeInput"]').forEach(btn=>{
     btn.onclick = ()=>{
       showingTimeInputFor.add(btn.dataset.id);
-      // The first Accept acknowledges the order immediately. Stop both the
-      // audible alarm and vibration before opening the pickup-time step.
-      stopAlarm();
-      if(navigator.vibrate) navigator.vibrate(0);
-      hasPendingOrders = latestOrdersList.some(order=>
-        order.status==='pending' && !isOrderMissed(order) && !showingTimeInputFor.has(order.id)
-      );
       renderDetailView(o);
       // Give the input a moment to actually be in the DOM, then focus it —
       // most mobile keyboards will auto-scroll the focused field into view,
@@ -1105,11 +1029,7 @@ function renderDetailView(o){
       // from ending up hidden underneath the keyboard.
       setTimeout(()=>{
         const inp = document.querySelector('.custom-time-input[data-id="'+btn.dataset.id+'"]');
-        if(inp){
-          try{ inp.focus({preventScroll:true}); }catch(e){ inp.focus(); }
-          inp.scrollIntoView({block:'center', inline:'nearest', behavior:'auto'});
-          [80, 260, 460].forEach(delay=>setTimeout(()=>ensurePickupEditorVisible(inp), delay));
-        }
+        if(inp) inp.focus();
       }, 50);
     };
   });
@@ -1522,20 +1442,41 @@ document.querySelectorAll('.bottom-tab-btn').forEach(btn=>{
 
 async function loadSiteInfo(){
   try{
-    const res = await fetch('/api/config');
+    const res = await fetch('/api/site-info');
     if(res.ok){
-      const cfg = await res.json();
-      if(cfg.siteInfo){
-        window.SITE_INFO = cfg.siteInfo;
-        printEnabled = cfg.siteInfo.printEnabled !== false;
-      }
+      const siteInfo = await res.json();
+      window.SITE_INFO = siteInfo;
+      printEnabled = siteInfo.printEnabled !== false;
     }
   }catch(e){}
+}
+
+let fallbackPollTimer = null;
+const FALLBACK_POLL_MS = 3000;
+
+function startFallbackPolling(){
+  if(fallbackPollTimer) return;
+  // SSE is unavailable/reconnecting. Check immediately, then every 3 seconds
+  // until the live stream is healthy again.
+  renderKitchen(true);
+  fallbackPollTimer = setInterval(()=>renderKitchen(true), FALLBACK_POLL_MS);
+}
+
+function stopFallbackPolling(){
+  if(!fallbackPollTimer) return;
+  clearInterval(fallbackPollTimer);
+  fallbackPollTimer = null;
 }
 
 function connectLiveUpdates(){
   try{
     const es = new EventSource('/api/events');
+
+    es.onopen = ()=>{
+      // Live push is healthy again, so stop all backup polling traffic.
+      stopFallbackPolling();
+    };
+
     es.onmessage = (e)=>{
       if(!e.data || e.data.startsWith(':')) return;
       try{
@@ -1549,18 +1490,27 @@ function connectLiveUpdates(){
         }
       }catch(err){}
     };
+
     es.onerror = ()=>{
-      // EventSource auto-reconnects; the 1s polling below still covers us meanwhile.
+      // EventSource will keep reconnecting automatically. While it is down,
+      // use a fast protected fallback so a kitchen order is still discovered
+      // within about 3 seconds instead of waiting for a fixed 30-second poll.
+      startFallbackPolling();
     };
-  }catch(e){ console.warn('Live updates not supported, falling back to polling only', e); }
+  }catch(e){
+    console.warn('Live updates not supported, falling back to polling only', e);
+    startFallbackPolling();
+  }
 }
 
 refreshAudioUnlockBanner();
 loadSiteInfo();
 renderKitchen();
 connectLiveUpdates();
-setInterval(()=>renderKitchen(true), 1000);
-setInterval(loadSiteInfo, 20000);
+// No normal polling while SSE is connected. A 3-second poll runs only during
+// an SSE outage/reconnect window and stops automatically as soon as SSE reopens.
+// Site info is tiny now; refresh once a minute instead of downloading full config every 20s.
+setInterval(loadSiteInfo, 60000);
 setInterval(()=>{ if(hasPendingOrders) playLoudAlarm(); }, 1000);
 </script>
 </body>

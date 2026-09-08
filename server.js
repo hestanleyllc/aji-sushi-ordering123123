@@ -542,6 +542,7 @@ function injectSeo(html, seo, siteInfo){
   return out;
 }
 
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
 app.get('/', (req, res) => res.redirect('/customer-order.html'));
 app.get('/customer-order.html', (req, res) => {
   fs.readFile(path.join(__dirname, 'customer-order.html'), 'utf8', (err, html) => {
@@ -698,6 +699,16 @@ function saveData(){
 }
 
 // ---- Config (site info + menu) ----
+app.get('/api/site-info', (req, res) => {
+  // Lightweight endpoint for the always-on kitchen screen. The old kitchen
+  // page downloaded the entire menu/config every 20 seconds just to read
+  // siteInfo, which wasted outbound bandwidth.
+  const siteInfo = JSON.parse(JSON.stringify((data.config && data.config.siteInfo) || {}));
+  delete siteInfo.notifyEmail;
+  siteInfo.onlinePaymentEnabled = !!stripe;
+  res.json(siteInfo);
+});
+
 app.get('/api/config', (req, res) => {
   // Public endpoint (the ordering page needs it) — strip anything staff-only before sending.
   const publicConfig = JSON.parse(JSON.stringify(data.config));
