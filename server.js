@@ -198,6 +198,10 @@ function ticketHeaderLines(order, stationLabel){
   const lines = [name, line];
   if(stationLabel) lines.push(`STATION: ${stationLabel.toUpperCase()}`, line);
   lines.push(`Order #${order.num}`, `Type: ${order.location}${order.deliveryAddress ? ' — '+order.deliveryAddress : ''}`);
+  if(order.isScheduledOrder){
+    lines.push('*** PRE-ORDER / SCHEDULED ***');
+    lines.push(`PICKUP: ${order.requestedPickupTime || new Date(order.requestedPickupTimestamp).toLocaleString('en-US')}`);
+  }
   if(order.name) lines.push(`Name: ${order.name}`);
   if(order.phone) lines.push(`Phone: ${order.phone}`);
   lines.push(line);
@@ -542,7 +546,6 @@ function injectSeo(html, seo, siteInfo){
   return out;
 }
 
-app.get('/healthz', (req, res) => res.status(200).send('ok'));
 app.get('/', (req, res) => res.redirect('/customer-order.html'));
 app.get('/customer-order.html', (req, res) => {
   fs.readFile(path.join(__dirname, 'customer-order.html'), 'utf8', (err, html) => {
@@ -699,16 +702,6 @@ function saveData(){
 }
 
 // ---- Config (site info + menu) ----
-app.get('/api/site-info', (req, res) => {
-  // Lightweight endpoint for the always-on kitchen screen. The old kitchen
-  // page downloaded the entire menu/config every 20 seconds just to read
-  // siteInfo, which wasted outbound bandwidth.
-  const siteInfo = JSON.parse(JSON.stringify((data.config && data.config.siteInfo) || {}));
-  delete siteInfo.notifyEmail;
-  siteInfo.onlinePaymentEnabled = !!stripe;
-  res.json(siteInfo);
-});
-
 app.get('/api/config', (req, res) => {
   // Public endpoint (the ordering page needs it) — strip anything staff-only before sending.
   const publicConfig = JSON.parse(JSON.stringify(data.config));
@@ -1223,7 +1216,38 @@ function validateOrderPayload(body){
       };
     }
   }
+  if(body.pickupTiming === 'scheduled'){
+    const requested = Number(body.requestedPickupTimestamp);
+    if(!Number.isFinite(requested)){
+      return { error: 'Please choose a valid scheduled pickup time.', code: 'invalid_schedule' };
+    }
+    if(requested < Date.now() + 25 * 60 * 1000){
+      return { error: 'Scheduled pickup must be at least 30 minutes from now.', code: 'invalid_schedule' };
+    }
+    if(requested > Date.now() + 14 * 24 * 60 * 60 * 1000){
+      return { error: 'Scheduled pickup can be booked up to 14 days in advance.', code: 'invalid_schedule' };
+    }
+    if((body.location || 'Pickup') !== 'Pickup'){
+      return { error: 'Scheduled time is currently available for pickup orders only.', code: 'invalid_schedule' };
+    }
+  }
   return null;
+}
+
+function formatRequestedPickupTime(timestamp){
+  const timezone = data.config && data.config.siteInfo && data.config.siteInfo.orderingHours && data.config.siteInfo.orderingHours.timezone
+    ? data.config.siteInfo.orderingHours.timezone
+    : 'America/New_York';
+  try{
+    return new Date(timestamp).toLocaleString('en-US', {
+      timeZone: timezone,
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+  }catch(e){
+    return new Date(timestamp).toLocaleString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+  }
 }
 
 function normalizeCustomerKey(phone, email){
@@ -1262,6 +1286,10 @@ function createOrder(body, extra){
     deliveryAddress: body.deliveryAddress || '',
     status: 'pending',
     pickupTime: null,
+    isScheduledOrder: body.pickupTiming === 'scheduled',
+    requestedPickupTimestamp: body.pickupTiming === 'scheduled' ? Number(body.requestedPickupTimestamp) : null,
+    requestedPickupTime: body.pickupTiming === 'scheduled' ? formatRequestedPickupTime(Number(body.requestedPickupTimestamp)) : null,
+    reservationReminderAcknowledgedAt: null,
     createdAt: Date.now(),
     paid: !!(extra && extra.paid),
     paymentMethod: (extra && extra.paymentMethod) || 'in_store',

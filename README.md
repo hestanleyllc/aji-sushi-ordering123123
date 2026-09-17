@@ -274,7 +274,3 @@
 5. **任何密钥/密码类的真实数值，绝对不能写进任何会上传到 GitHub 的文件里**（包括这份 README 本身）
 6. 每次改完关键功能（尤其是价格计算、支付相关代码），**务必要求实际测试后再确认完成**，这个项目历史上有过好几次"看起来改好了、实际上线后才发现新bug"的情况（比如价格校验、税率计算、图片上传都出过这种问题），改完不能想当然，要看真实的测试结果或者报错信息
 7. 目前进行中、还没解决的问题见文档最上面"零、当前正在处理的问题"这一节
-
-
-### Kitchen live-update bandwidth optimization
-The kitchen board uses SSE as the primary real-time channel. While SSE is connected there is no periodic order polling. If SSE disconnects, a 3-second fallback poll starts automatically and stops immediately when SSE reconnects.

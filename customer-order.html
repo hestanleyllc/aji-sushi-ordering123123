@@ -95,6 +95,10 @@
     color:var(--ink);font-weight:700;font-size:13px;cursor:pointer;transition:all .15s;
   }
   .order-mode-btn.active{background:var(--orange);border-color:var(--orange);color:#fff;}
+  .schedule-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:7px;}
+  .schedule-box{margin-top:10px;padding:12px;border:2px solid #7C3AED;border-radius:12px;background:#F5F0FF;}
+  .schedule-box input{background:#fff!important;border-color:#C4B5FD!important;font-size:16px!important;}
+  .schedule-help{font-size:12px;color:#5B21B6;margin-top:7px;font-weight:650;line-height:1.35;}
 
   .customer{max-width:720px;margin:0 auto;padding:20px 16px 130px;background:var(--page-bg);}
 
@@ -2827,6 +2831,7 @@ let cartItems = []; // [{lineId, dishId, name, price, qty, note, options:{label:
 let activeCat = MENU[0].cat;
 let trackingOrderId = null;
 let orderMode = 'pickup';
+let pickupTiming = 'asap';
 let paymentMethod = 'store';
 let trackingTimer = null;
 let storeOpen = true;
@@ -3325,6 +3330,18 @@ function renderDrawer(showConfirm){
         <label>Delivery Address</label>
         <input id="deliveryAddress" placeholder="Street, city, zip" />
       </div>
+      <div class="field" id="pickupTimingField" style="${orderMode==='delivery'?'display:none;':''}">
+        <label>Pickup Time</label>
+        <div class="schedule-choice">
+          <button type="button" class="order-mode-btn ${pickupTiming==='asap'?'active':''}" id="pickupAsapBtn">⚡ ASAP</button>
+          <button type="button" class="order-mode-btn ${pickupTiming==='scheduled'?'active':''}" id="pickupScheduleBtn">🗓 Schedule Pickup</button>
+        </div>
+        <div class="schedule-box" id="scheduledPickupBox" style="${pickupTiming==='scheduled'?'':'display:none;'}">
+          <label for="scheduledPickupAt">Requested pickup date and time</label>
+          <input id="scheduledPickupAt" type="datetime-local" step="900" />
+          <div class="schedule-help">The restaurant must confirm your requested pickup time. You will see the confirmed time after the order is accepted.</div>
+        </div>
+      </div>
       <div class="field">
         <label>${t('order_note_label')}</label>
         <textarea id="orderNote" rows="2" placeholder="Allergies, no onions, extra sauce…"></textarea>
@@ -3385,12 +3402,39 @@ function renderDrawer(showConfirm){
       modePickupBtn.classList.add('active'); modeDeliveryBtn.classList.remove('active');
       document.getElementById('deliveryAddressField').style.display = 'none';
       document.getElementById('pickupAddressNote').style.display = '';
+      document.getElementById('pickupTimingField').style.display = '';
     };
     modeDeliveryBtn.onclick = ()=>{
       orderMode = 'delivery';
       modeDeliveryBtn.classList.add('active'); modePickupBtn.classList.remove('active');
       document.getElementById('deliveryAddressField').style.display = '';
       document.getElementById('pickupAddressNote').style.display = 'none';
+      document.getElementById('pickupTimingField').style.display = 'none';
+    };
+  }
+
+  const pickupAsapBtn = document.getElementById('pickupAsapBtn');
+  const pickupScheduleBtn = document.getElementById('pickupScheduleBtn');
+  const scheduledPickupBox = document.getElementById('scheduledPickupBox');
+  const scheduledPickupAt = document.getElementById('scheduledPickupAt');
+  if(pickupAsapBtn && pickupScheduleBtn && scheduledPickupBox && scheduledPickupAt){
+    const minimum = new Date(Date.now() + 30 * 60000);
+    minimum.setMinutes(Math.ceil(minimum.getMinutes() / 15) * 15, 0, 0);
+    const toLocalInput = d => {
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    scheduledPickupAt.min = toLocalInput(minimum);
+    if(!scheduledPickupAt.value) scheduledPickupAt.value = toLocalInput(minimum);
+    pickupAsapBtn.onclick = ()=>{
+      pickupTiming = 'asap';
+      pickupAsapBtn.classList.add('active'); pickupScheduleBtn.classList.remove('active');
+      scheduledPickupBox.style.display = 'none';
+    };
+    pickupScheduleBtn.onclick = ()=>{
+      pickupTiming = 'scheduled';
+      pickupScheduleBtn.classList.add('active'); pickupAsapBtn.classList.remove('active');
+      scheduledPickupBox.style.display = '';
     };
   }
 
@@ -3525,11 +3569,39 @@ function buildOrderPayload(){
   const note = document.getElementById('orderNote').value;
   const isDelivery = SITE.deliveryEnabled && orderMode === 'delivery';
   const deliveryAddress = isDelivery ? (document.getElementById('deliveryAddress').value || '') : '';
+  const scheduledInput = document.getElementById('scheduledPickupAt');
+  const scheduledPickupTimestamp = !isDelivery && pickupTiming === 'scheduled' && scheduledInput && scheduledInput.value
+    ? new Date(scheduledInput.value).getTime()
+    : null;
   return {
     items, subtotal, tax, total, note, name, phone, email,
     location: isDelivery ? 'Delivery' : 'Pickup',
     deliveryAddress,
+    pickupTiming: scheduledPickupTimestamp ? 'scheduled' : 'asap',
+    requestedPickupTimestamp: scheduledPickupTimestamp,
   };
+}
+
+function validateScheduledPickup(){
+  if(orderMode === 'delivery' || pickupTiming !== 'scheduled') return true;
+  const input = document.getElementById('scheduledPickupAt');
+  const timestamp = input && input.value ? new Date(input.value).getTime() : NaN;
+  if(!Number.isFinite(timestamp)){
+    alert('Please choose a pickup date and time.');
+    if(input) input.focus();
+    return false;
+  }
+  if(timestamp < Date.now() + 25 * 60000){
+    alert('Scheduled pickup must be at least 30 minutes from now.');
+    if(input) input.focus();
+    return false;
+  }
+  if(timestamp > Date.now() + 14 * 24 * 60 * 60000){
+    alert('Scheduled pickup can be booked up to 14 days in advance.');
+    if(input) input.focus();
+    return false;
+  }
+  return true;
 }
 
 async function submitOrder(){
@@ -3550,6 +3622,7 @@ async function submitOrder(){
     document.getElementById('customerEmail').focus();
     return;
   }
+  if(!validateScheduledPickup()) return;
   const btn = document.getElementById('submitOrder');
   btn.disabled = true; btn.textContent = 'Sending…';
   const payload = buildOrderPayload();
@@ -3582,6 +3655,7 @@ async function submitOrder(){
 }
 
 async function submitOrderOnline(){
+  if(!validateScheduledPickup()) return;
   const btn = document.getElementById('submitOrder');
   btn.disabled = true; btn.textContent = 'Redirecting to payment…';
   const payload = buildOrderPayload();
@@ -3783,8 +3857,7 @@ async function handleReturnFromPayment(){
 
 loadConfig(false).then(()=>handleReturnFromPayment());
 loadStoreStatus();
-// Menu/config changes do not need 20-second polling; one minute cuts unnecessary bandwidth.
-setInterval(()=>loadConfig(true), 60000);
+setInterval(()=>loadConfig(true), 20000);
 setInterval(loadStoreStatus, 60000);
 </script>
 </body>
