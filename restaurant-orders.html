@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AJI SUSHI · Incoming Orders</title>
 <link rel="manifest" href="/kitchen-manifest.json">
 <meta name="theme-color" content="#1C1C1E">
@@ -156,13 +156,6 @@
   .custom-time-row input[type="text"]{
     flex:1;padding:14px;border-radius:10px;border:1.5px solid var(--line);font-family:'Inter',sans-serif;
     font-size:17px;font-weight:700;text-align:center;
-    scroll-margin-top:90px;scroll-margin-bottom:220px;
-  }
-  /* Mobile Safari/PWA: reserve real space for the software keyboard so the
-     pickup-time field cannot end up underneath it. --keyboard-inset is kept
-     in sync with window.visualViewport by JavaScript below. */
-  body.keyboard-open .detail-body{
-    padding-bottom:calc(180px + var(--keyboard-inset, 0px));
   }
   .minutes-suffix{font-size:15px;font-weight:700;color:var(--stone);flex:none;}
   .ticket-actions{display:flex;gap:8px;}
@@ -298,79 +291,36 @@ let firstLoad = true;
 let audioUnlocked = false;
 let pendingSelections = {}; // orderId -> {offsetMinutes, customTime}
 let showingTimeInputFor = new Set(); // orderIds where "Accept" was tapped, revealing the time input step
-
-// Keep the pickup-time editor above the iOS/Android on-screen keyboard.
-// visualViewport reflects the actually visible part of the page while a
-// software keyboard is open; window.innerHeight alone is unreliable in
-// Safari and installed PWAs.
-function ensurePickupEditorVisible(inp){
-  if(!inp || document.activeElement !== inp) return;
-  const vv = window.visualViewport;
-  const viewportTop = vv ? vv.offsetTop : 0;
-  const viewportHeight = vv ? vv.height : window.innerHeight;
-  const safeTop = viewportTop + 78;
-  const safeBottom = viewportTop + viewportHeight - 22;
-  const row = inp.closest('.custom-time-row') || inp;
-  const actions = row.nextElementSibling && row.nextElementSibling.classList.contains('ticket-actions')
-    ? row.nextElementSibling : null;
-  const top = row.getBoundingClientRect().top;
-  const bottom = (actions || row).getBoundingClientRect().bottom;
-
-  if(bottom > safeBottom){
-    window.scrollBy({top: bottom - safeBottom + 18, left: 0, behavior: 'auto'});
-  } else if(top < safeTop){
-    window.scrollBy({top: top - safeTop - 12, left: 0, behavior: 'auto'});
-  }
-}
-
-let keyboardBaselineHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-
-function syncKeyboardViewport(){
-  const vv = window.visualViewport;
-  if(!vv) return;
-  const active = document.activeElement;
-  const pickupInputActive = !!(active && active.classList && active.classList.contains('custom-time-input'));
-
-  // While no pickup field is focused, remember the normal viewport height.
-  // This works even on iOS versions where window.innerHeight shrinks together
-  // with visualViewport.height when the keyboard opens.
-  if(!pickupInputActive){
-    keyboardBaselineHeight = vv.height;
-    document.documentElement.style.setProperty('--keyboard-inset', '0px');
-    document.body.classList.remove('keyboard-open');
-    return;
-  }
-
-  const keyboardInset = Math.max(0, Math.round(keyboardBaselineHeight - vv.height));
-  const keyboardOpen = keyboardInset > 80;
-  document.documentElement.style.setProperty('--keyboard-inset', keyboardOpen ? keyboardInset + 'px' : '0px');
-  document.body.classList.toggle('keyboard-open', keyboardOpen);
-  requestAnimationFrame(()=>ensurePickupEditorVisible(active));
-}
-
-if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', syncKeyboardViewport);
-  window.visualViewport.addEventListener('scroll', syncKeyboardViewport);
-}
-window.addEventListener('orientationchange', ()=>setTimeout(syncKeyboardViewport, 250));
 let currentView = 'list'; // 'list' | 'detail' | 'settings'
 
 const MISSED_ORDER_MINUTES = 5;
 function isOrderMissed(o){
   return o.status === 'pending' && (Date.now() - o.createdAt) > MISSED_ORDER_MINUTES * 60000;
 }
-function isScheduledOrder(o){return !!(o&&o.isScheduledOrder&&Number(o.requestedPickupTimestamp));}
+
+function isScheduledOrder(o){
+  return !!(o && o.isScheduledOrder && Number(o.requestedPickupTimestamp));
+}
+
 function scheduledPickupText(o){
   if(!isScheduledOrder(o)) return '';
   if(o.requestedPickupTime) return o.requestedPickupTime;
-  return new Date(Number(o.requestedPickupTimestamp)).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  return new Date(Number(o.requestedPickupTimestamp)).toLocaleString('en-US', {
+    weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'
+  });
 }
+
 function isReservationReminderDue(o){
-  if(!isScheduledOrder(o)||o.status!=='confirmed'||o.reservationReminderAcknowledgedAt) return false;
-  const pickupAt=Number(o.requestedPickupTimestamp),now=Date.now();
-  return now>=pickupAt-20*60000&&now<=pickupAt+60*60000;
+  if(!isScheduledOrder(o) || o.status !== 'confirmed' || o.reservationReminderAcknowledgedAt) return false;
+  const pickupAt = Number(o.requestedPickupTimestamp);
+  const now = Date.now();
+  return now >= pickupAt - 20 * 60000 && now <= pickupAt + 60 * 60000;
 }
-function orderNeedsAlarm(o){return (o.status==='pending'&&!isOrderMissed(o)&&!showingTimeInputFor.has(o.id))||isReservationReminderDue(o);}
+
+function orderNeedsAlarm(o){
+  const unacknowledgedNewOrder = o.status === 'pending' && !isOrderMissed(o) && !showingTimeInputFor.has(o.id);
+  return unacknowledgedNewOrder || isReservationReminderDue(o);
+}
 
 function applyDividerColor(){
   const saved = localStorage.getItem('dividerColor');
@@ -906,9 +856,11 @@ function openDetail(orderId){
 function renderListView(){
   const el = document.getElementById('kitchenView');
   const pending = latestOrdersList.filter(o=>o.status==='pending').sort((a,b)=>b.createdAt-a.createdAt);
-  const scheduled = latestOrdersList.filter(o=>o.status!=='pending'&&isScheduledOrder(o)&&Number(o.requestedPickupTimestamp)>Date.now()-60*60000).sort((a,b)=>Number(a.requestedPickupTimestamp)-Number(b.requestedPickupTimestamp));
-  const scheduledIds=new Set(scheduled.map(o=>o.id));
-  const history=latestOrdersList.filter(o=>o.status!=='pending'&&!scheduledIds.has(o.id)).sort((a,b)=>b.createdAt-a.createdAt);
+  const scheduled = latestOrdersList
+    .filter(o=>o.status!=='pending' && isScheduledOrder(o) && Number(o.requestedPickupTimestamp) > Date.now()-60*60000)
+    .sort((a,b)=>Number(a.requestedPickupTimestamp)-Number(b.requestedPickupTimestamp));
+  const scheduledIds = new Set(scheduled.map(o=>o.id));
+  const history = latestOrdersList.filter(o=>o.status!=='pending' && !scheduledIds.has(o.id)).sort((a,b)=>b.createdAt-a.createdAt);
   const showSoundControls = localStorage.getItem('showSoundControls') === '1';
 
   function rowsHtml(arr, emptyMsg){
@@ -1002,7 +954,10 @@ function renderDetailView(o){
     if(showingTimeInputFor.has(o.id)){
       bodyHtml = isScheduledOrder(o) ? `
         <div class="scheduled-confirm-box">Customer requested pickup<strong>${escapeHtml(scheduledPickupText(o))}</strong></div>
-        <div class="ticket-actions"><button class="tk-btn reject" data-reject-id="${o.id}">✕</button><button class="tk-btn confirm" data-id="${o.id}">CONFIRM PRE-ORDER</button></div>` : `
+        <div class="ticket-actions">
+          <button class="tk-btn reject" data-reject-id="${o.id}">✕</button>
+          <button class="tk-btn confirm" data-id="${o.id}">CONFIRM PRE-ORDER</button>
+        </div>` : `
         <div class="custom-time-row">
           <input type="text" inputmode="numeric" placeholder="Minutes, e.g. 15" data-id="${o.id}" class="custom-time-input" value="${sel.offsetMinutes||''}">
           <span class="minutes-suffix">min</span>
@@ -1019,24 +974,26 @@ function renderDetailView(o){
         </div>`;
     }
   } else {
-    const reminderButton=isReservationReminderDue(o)?`<div class="ticket-actions" style="margin-bottom:10px;"><button class="tk-btn confirm" data-reminder-ack-id="${o.id}">✓ STOP 20-MIN REMINDER</button></div>`:'';
     // Manual POS-sync control — harmless to show even if the POS is set to
     // auto-sync everything; it only matters when the POS's own "线上订单"
     // setting is switched to manual mode, in which case THIS is what
     // actually gets an order pulled in and printed.
+    const reminderButton = isReservationReminderDue(o)
+      ? `<div class="ticket-actions" style="margin-bottom:10px;"><button class="tk-btn confirm" data-reminder-ack-id="${o.id}">✓ STOP 20-MIN REMINDER</button></div>`
+      : '';
     if(o.posSynced){
-      bodyHtml = reminderButton+`<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">✅ 已同步到POS Synced to POS</button></div>`;
+      bodyHtml = reminderButton + `<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">✅ 已同步到POS Synced to POS</button></div>`;
     } else if(o.posSyncRequested){
-      bodyHtml = reminderButton+`<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">⏳ 等待POS同步 Waiting for POS…</button></div>`;
+      bodyHtml = reminderButton + `<div class="ticket-actions"><button class="tk-btn" disabled style="opacity:.55;">⏳ 等待POS同步 Waiting for POS…</button></div>`;
     } else {
-      bodyHtml = reminderButton+`<div class="ticket-actions"><button class="tk-btn sync-btn" data-sync-id="${o.id}">📤 同步到POS Sync to POS</button></div>`;
+      bodyHtml = reminderButton + `<div class="ticket-actions"><button class="tk-btn sync-btn" data-sync-id="${o.id}">📤 同步到POS Sync to POS</button></div>`;
     }
   }
 
   const missed = isOrderMissed(o);
   const missedBanner = missed ? `<div class="missed-banner">⚠ MISSED ORDER — not confirmed within ${MISSED_ORDER_MINUTES} minutes</div>` : '';
-  const scheduledBanner=isScheduledOrder(o)?`<div class="scheduled-banner">🗓 PRE-ORDER · SCHEDULED PICKUP<span class="scheduled-time">${escapeHtml(scheduledPickupText(o))}</span></div>`:'';
-  const reminderBanner=isReservationReminderDue(o)?`<div class="reminder-banner">🔔 20-MINUTE PICKUP REMINDER</div>`:'';
+  const scheduledBanner = isScheduledOrder(o) ? `<div class="scheduled-banner">🗓 PRE-ORDER · SCHEDULED PICKUP<span class="scheduled-time">${escapeHtml(scheduledPickupText(o))}</span></div>` : '';
+  const reminderBanner = isReservationReminderDue(o) ? `<div class="reminder-banner">🔔 20-MINUTE PICKUP REMINDER</div>` : '';
 
   el.innerHTML = `
     <div class="detail-topbar">
@@ -1105,14 +1062,12 @@ function renderDetailView(o){
       if(confirmBtn) confirmBtn.disabled = !valid;
     };
     inp.onfocus = ()=>{
-      // Re-check several times while the mobile keyboard animates. iOS may
-      // resize the visual viewport in stages, so a single scrollIntoView call
-      // can still leave the field hidden.
-      syncKeyboardViewport();
-      [60, 220, 420].forEach(delay=>setTimeout(()=>ensurePickupEditorVisible(inp), delay));
-    };
-    inp.onblur = ()=>{
-      setTimeout(syncKeyboardViewport, 120);
+      // Wait for the on-screen keyboard to finish animating in, then make sure
+      // the ACCEPT button (not just the input) is still visible above it.
+      setTimeout(()=>{
+        const confirmBtn = el.querySelector(`.tk-btn.confirm[data-id="${inp.dataset.id}"]`);
+        if(confirmBtn) confirmBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 300);
     };
   });
   el.querySelectorAll('[data-reject-id]').forEach(btn=>{
@@ -1134,7 +1089,7 @@ function renderDetailView(o){
       showingTimeInputFor.add(btn.dataset.id);
       stopAlarm();
       if(navigator.vibrate) navigator.vibrate(0);
-      hasPendingOrders=latestOrdersList.some(orderNeedsAlarm);
+      hasPendingOrders = latestOrdersList.some(orderNeedsAlarm);
       renderDetailView(o);
       // Give the input a moment to actually be in the DOM, then focus it —
       // most mobile keyboards will auto-scroll the focused field into view,
@@ -1142,19 +1097,29 @@ function renderDetailView(o){
       // from ending up hidden underneath the keyboard.
       setTimeout(()=>{
         const inp = document.querySelector('.custom-time-input[data-id="'+btn.dataset.id+'"]');
-        if(inp){
-          try{ inp.focus({preventScroll:true}); }catch(e){ inp.focus(); }
-          inp.scrollIntoView({block:'center', inline:'nearest', behavior:'auto'});
-          [80, 260, 460].forEach(delay=>setTimeout(()=>ensurePickupEditorVisible(inp), delay));
-        }
+        if(inp) inp.focus();
       }, 50);
     };
   });
   el.querySelectorAll('[data-reminder-ack-id]').forEach(btn=>{
-    btn.onclick=async()=>{
-      const id=btn.dataset.reminderAckId;stopAlarm();if(navigator.vibrate)navigator.vibrate(0);btn.disabled=true;btn.textContent='Stopping…';
-      try{const res=await fetch('/api/orders/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reservationReminderAcknowledgedAt:Date.now()})});if(!res.ok)throw new Error('save failed');await renderKitchen();}
-      catch(e){btn.disabled=false;btn.textContent='✓ STOP 20-MIN REMINDER';alert('Could not stop the reminder. Please try again.');}
+    btn.onclick = async ()=>{
+      const id = btn.dataset.reminderAckId;
+      stopAlarm();
+      if(navigator.vibrate) navigator.vibrate(0);
+      btn.disabled = true;
+      btn.textContent = 'Stopping…';
+      try{
+        const res = await fetch('/api/orders/'+id, {
+          method:'PATCH', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({reservationReminderAcknowledgedAt:Date.now()})
+        });
+        if(!res.ok) throw new Error('Could not save reminder acknowledgement');
+        await renderKitchen();
+      }catch(e){
+        btn.disabled = false;
+        btn.textContent = '✓ STOP 20-MIN REMINDER';
+        alert('Could not stop the reminder. Please try again.');
+      }
     };
   });
   el.querySelectorAll('[data-sync-id]').forEach(btn=>{
@@ -1195,13 +1160,16 @@ function renderDetailView(o){
       if(order) attemptNetworkPrint(order);
     };
   });
-  el.querySelectorAll('.tk-btn.confirm').forEach(btn=>{
+  // Only bind the order-confirmation handler to buttons that carry data-id.
+  // The 20-minute reminder button has its own handler and must never be
+  // overwritten by this loop (that previously sent /api/orders/undefined).
+  el.querySelectorAll('.tk-btn.confirm[data-id]').forEach(btn=>{
     btn.onclick = async ()=>{
       if(btn.disabled) return;
       const id = btn.dataset.id;
-      const order=latestOrdersList.find(x=>x.id===id)||o;
-      const sel=pendingSelections[id];
-      const label=isScheduledOrder(order)?scheduledPickupText(order):computePickupLabel(sel);
+      const order = latestOrdersList.find(x=>x.id===id) || o;
+      const sel = pendingSelections[id];
+      const label = isScheduledOrder(order) ? scheduledPickupText(order) : computePickupLabel(sel);
       if(!label) return;
       btn.disabled = true;
       const originalText = btn.textContent;
@@ -1210,7 +1178,7 @@ function renderDetailView(o){
         const res = await fetch('/api/orders/'+id, {
           method:'PATCH',
           headers: {'Content-Type':'application/json'},
-          body:JSON.stringify({status:'confirmed',pickupTime:label,pickupTimestamp:isScheduledOrder(order)?Number(order.requestedPickupTimestamp):computePickupTimestamp(sel),confirmedAt:Date.now()})
+          body: JSON.stringify({status:'confirmed', pickupTime:label, pickupTimestamp: isScheduledOrder(order) ? Number(order.requestedPickupTimestamp) : computePickupTimestamp(sel), confirmedAt: Date.now()})
         });
         if(res.status === 401){
           window.location.href = '/staff-login.html?redirect=' + encodeURIComponent(window.location.pathname);
