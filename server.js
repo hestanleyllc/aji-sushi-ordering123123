@@ -597,6 +597,7 @@ const DEFAULT_CONFIG = {
     googleReviewLink: '',
     orderAlertMinutes: 5,
     printEnabled: true,
+    preorderEnabled: true,
     orderingHours: {
       timezone: 'America/New_York',
       schedule: {
@@ -746,11 +747,19 @@ app.post('/api/kitchen-settings', requireKitchenAuth, (req, res) => {
   if(typeof body.printEnabled === 'boolean'){
     data.config.siteInfo.printEnabled = body.printEnabled;
   }
+  if(typeof body.preorderEnabled === 'boolean'){
+    data.config.siteInfo.preorderEnabled = body.preorderEnabled;
+  }
   if(typeof body.localPrinterIp === 'string'){
     data.config.siteInfo.localPrinterIp = body.localPrinterIp.trim();
   }
   saveData();
-  res.json({ ok: true, printEnabled: data.config.siteInfo.printEnabled, localPrinterIp: data.config.siteInfo.localPrinterIp });
+  res.json({
+    ok: true,
+    printEnabled: data.config.siteInfo.printEnabled,
+    preorderEnabled: data.config.siteInfo.preorderEnabled !== false,
+    localPrinterIp: data.config.siteInfo.localPrinterIp
+  });
 });
 
 // ---- Printer stations, manageable directly from the kitchen board's Settings tab ----
@@ -1217,6 +1226,9 @@ function validateOrderPayload(body){
     }
   }
   if(body.pickupTiming === 'scheduled'){
+    if(data.config.siteInfo && data.config.siteInfo.preorderEnabled === false){
+      return { error: 'Scheduled pickup is not available right now. Please choose ASAP pickup.', code: 'preorder_disabled' };
+    }
     const requested = Number(body.requestedPickupTimestamp);
     if(!Number.isFinite(requested)){
       return { error: 'Please choose a valid scheduled pickup time.', code: 'invalid_schedule' };

@@ -394,6 +394,7 @@ const DEFAULT_SITE = {
   contact: { phone: '', address: '1620 NY-22, Brewster, NY 10509', hours: '' },
   taxRate: 8.375,
   deliveryEnabled: false,
+  preorderEnabled: true,
   onlinePaymentEnabled: false
 };
 const DEFAULT_MENU = [
@@ -2919,7 +2920,14 @@ async function loadConfig(silent){
         cfg.menu.forEach(sec=>sec.items.forEach(it=>{ if(!Array.isArray(it.optionGroups)) it.optionGroups = []; }));
         MENU = cfg.menu;
       }
-      if(cfg.siteInfo) SITE = cfg.siteInfo;
+      if(cfg.siteInfo){
+        SITE = cfg.siteInfo;
+        if(SITE.preorderEnabled === false){
+          pickupTiming = 'asap';
+          const existingPickupTimingField = document.getElementById('pickupTimingField');
+          if(existingPickupTimingField) existingPickupTimingField.remove();
+        }
+      }
     }
   }catch(e){}
   if(!paymentMethodDefaulted && SITE.onlinePaymentEnabled){
@@ -3330,7 +3338,7 @@ function renderDrawer(showConfirm){
         <label>Delivery Address</label>
         <input id="deliveryAddress" placeholder="Street, city, zip" />
       </div>
-      <div class="field" id="pickupTimingField" style="${orderMode==='delivery'?'display:none;':''}">
+      ${SITE.preorderEnabled !== false ? `<div class="field" id="pickupTimingField" style="${orderMode==='delivery'?'display:none;':''}">
         <label>Pickup Time</label>
         <div class="schedule-choice">
           <button type="button" class="order-mode-btn ${pickupTiming==='asap'?'active':''}" id="pickupAsapBtn">⚡ ASAP</button>
@@ -3341,7 +3349,7 @@ function renderDrawer(showConfirm){
           <input id="scheduledPickupAt" type="datetime-local" step="900" />
           <div class="schedule-help">The restaurant must confirm your requested pickup time. You will see the confirmed time after the order is accepted.</div>
         </div>
-      </div>
+      </div>` : ''}
       <div class="field">
         <label>${t('order_note_label')}</label>
         <textarea id="orderNote" rows="2" placeholder="Allergies, no onions, extra sauce…"></textarea>
@@ -3402,14 +3410,16 @@ function renderDrawer(showConfirm){
       modePickupBtn.classList.add('active'); modeDeliveryBtn.classList.remove('active');
       document.getElementById('deliveryAddressField').style.display = 'none';
       document.getElementById('pickupAddressNote').style.display = '';
-      document.getElementById('pickupTimingField').style.display = '';
+      const pickupTimingField = document.getElementById('pickupTimingField');
+      if(pickupTimingField) pickupTimingField.style.display = '';
     };
     modeDeliveryBtn.onclick = ()=>{
       orderMode = 'delivery';
       modeDeliveryBtn.classList.add('active'); modePickupBtn.classList.remove('active');
       document.getElementById('deliveryAddressField').style.display = '';
       document.getElementById('pickupAddressNote').style.display = 'none';
-      document.getElementById('pickupTimingField').style.display = 'none';
+      const pickupTimingField = document.getElementById('pickupTimingField');
+      if(pickupTimingField) pickupTimingField.style.display = 'none';
     };
   }
 

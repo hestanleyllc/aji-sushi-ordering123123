@@ -436,6 +436,7 @@ async function handleInstallClick(){
 let currentDetailOrderId = null;
 let latestOrdersList = [];
 let printEnabled = true;
+let preorderEnabled = true;
 
 function refreshAudioUnlockBanner(){
   const banner = document.getElementById('audioUnlockBanner');
@@ -1278,6 +1279,19 @@ async function renderSettingsView(){
       </div>
 
       <div class="settings-section">
+        <div class="settings-section-title">Scheduled Pre-orders</div>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Accept scheduled pre-orders</div>
+              <div class="settings-row-sub">${preorderEnabled ? 'On — customers can choose a future pickup time' : 'Off — customers only see ASAP pickup'}</div>
+            </div>
+            <button class="toggle-switch ${preorderEnabled?'on':''}" id="preorderToggleBtn"><span class="knob"></span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="settings-section-title">Printing</div>
         <div class="settings-card" style="margin-bottom:10px;">
           <div class="settings-row">
@@ -1358,6 +1372,22 @@ async function renderSettingsView(){
   document.getElementById('dividerColorInput').oninput = (e)=>{
     localStorage.setItem('dividerColor', e.target.value);
     applyDividerColor();
+  };
+
+  document.getElementById('preorderToggleBtn').onclick = async ()=>{
+    const previous = preorderEnabled;
+    preorderEnabled = !preorderEnabled;
+    try{
+      const res = await fetch('/api/kitchen-settings', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ preorderEnabled })
+      });
+      if(!res.ok) throw new Error('Could not save scheduled pre-order setting');
+    }catch(e){
+      preorderEnabled = previous;
+      alert('Could not save the scheduled pre-order setting. Please try again.');
+    }
+    renderSettingsView();
   };
 
   document.getElementById('printToggleBtn').onclick = async ()=>{
@@ -1541,6 +1571,7 @@ async function loadSiteInfo(){
       if(cfg.siteInfo){
         window.SITE_INFO = cfg.siteInfo;
         printEnabled = cfg.siteInfo.printEnabled !== false;
+        preorderEnabled = cfg.siteInfo.preorderEnabled !== false;
       }
     }
   }catch(e){}
