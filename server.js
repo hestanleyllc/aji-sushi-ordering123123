@@ -715,6 +715,17 @@ app.get('/api/config', (req, res) => {
   res.json(publicConfig);
 });
 
+// Lightweight settings endpoint for the kitchen display. The kitchen page
+// refreshes these flags periodically, but it does not need the full menu on
+// every refresh. Keeping this response small avoids repeatedly transferring
+// the entire menu configuration while preserving live setting changes.
+app.get('/api/site-info', (req, res) => {
+  const siteInfo = JSON.parse(JSON.stringify((data.config && data.config.siteInfo) || {}));
+  delete siteInfo.notifyEmail;
+  siteInfo.onlinePaymentEnabled = !!stripe;
+  res.json({ siteInfo });
+});
+
 app.post('/api/config', requireAdminAuth, (req, res) => {
   if(!req.body || typeof req.body !== 'object'){
     return res.status(400).json({ error: 'Invalid config payload' });
