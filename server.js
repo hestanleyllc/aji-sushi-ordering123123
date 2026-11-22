@@ -363,6 +363,17 @@ function queueFreePrintJobs(order){
 }
 
 const app = express();
+
+// Canonical domain: send visitors from the retired SUSHIBREWSTER domain to
+// the same path on AJIBREWSTER, so ordering and staff sessions use one origin.
+// Exact host matching avoids redirecting Render's internal health checks.
+app.use((req, res, next) => {
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase().replace(/\.$/, '');
+  if (host === 'sushibrewster.com' || host === 'www.sushibrewster.com') {
+    return res.redirect(307, 'https://ajibrewster.com' + req.originalUrl);
+  }
+  next();
+});
 app.use(express.json({ limit: '15mb' }));
 
 const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || 'admin';
